@@ -270,48 +270,33 @@ function classifyText(
 }
 
 /**
- * Build the text string for a block from its ordered set of text nodes and the element tree,
- * inserting "\n" for each BR element whose nearest non-inline ancestor is `blockEl`.
- *
- * We walk the entire subtree of `blockEl` using SHOW_TEXT | SHOW_ELEMENT and emit:
- * - text node data if that text node is in `ownNodes`
- * - "\n" if element is a BR whose immediate non-inline ancestor is `blockEl`
- *
- * If `prefix` is provided, it is prepended with a single space separator (collapsing any double space).
+ * Walk `blockEl` in document order and report its own text nodes and the BR elements that end its lines
+ * (a BR counts only when its nearest non-inline ancestor is `blockEl`; BRs of nested blocks are theirs).
  */
-function buildBlockText(blockEl: HTMLElement, ownNodes: Set<Text>, prefix: string): string {
-  const doc = blockEl.ownerDocument!;
-  const walker = doc.createTreeWalker(blockEl, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
-  const parts: string[] = [];
-
+function walkBlock(blockEl: HTMLElement, ownNodes: Set<Text>, onText: (t: Text) => void, onBr: (br: HTMLElement) => void): void {
+  const walker = blockEl.ownerDocument!.createTreeWalker(blockEl, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
     if (n.nodeType === Node.TEXT_NODE) {
-      if (ownNodes.has(n as Text)) {
-        parts.push((n as Text).data);
-      }
-    } else if (n.nodeType === Node.ELEMENT_NODE) {
-      const elem = n as HTMLElement;
-      if (elem.tagName === "BR") {
-        // Include this BR as "\n" if its nearest non-inline ancestor is blockEl
-        let brOwner: HTMLElement | null = null;
-        for (let a: Element | null = elem.parentElement; a; a = a.parentElement) {
-          if (!(a instanceof HTMLElement)) break;
-          if (!INLINE_DISPLAY.has(getComputedStyle(a).display)) {
-            brOwner = a;
-            break;
-          }
-        }
-        if (brOwner === blockEl) {
-          parts.push("\n");
+      if (ownNodes.has(n as Text)) onText(n as Text);
+    } else if ((n as HTMLElement).tagName === "BR") {
+      let brOwner: HTMLElement | null = null;
+      for (let a: Element | null = (n as HTMLElement).parentElement; a; a = a.parentElement) {
+        if (!(a instanceof HTMLElement)) break;
+        if (!INLINE_DISPLAY.has(getComputedStyle(a).display)) {
+          brOwner = a;
+          break;
         }
       }
+      if (brOwner === blockEl) onBr(n as HTMLElement);
     }
   }
+}
 
-  const rawText = parts.join("");
-  if (!prefix) return rawText;
-  // Join prefix and raw text with a single space, collapsing any leading whitespace from rawText
-  return prefix + " " + rawText.trimStart();
+/** Text of a block: own text nodes in document order (video-time buttons included in place), BR as "\n". */
+function buildBlockText(blockEl: HTMLElement, ownNodes: Set<Text>): string {
+  const parts: string[] = [];
+  walkBlock(blockEl, ownNodes, (t) => parts.push(t.data), () => parts.push("\n"));
+  return parts.join("");
 }
 
 /**
@@ -344,8 +329,6 @@ export function findBlocks(root: ParentNode): PageBlock[] {
 
   // Map from block owner element to its owned text nodes (ordered)
   const groups = new Map<HTMLElement, Text[]>();
-  // Map from outer block owner to timestamp texts that come from interactive child elements
-  const timestampPrefixes = new Map<HTMLElement, string[]>();
 
   const doc = (root instanceof Document ? root : (root as Element).ownerDocument)!;
   const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -356,16 +339,8 @@ export function findBlocks(root: ParentNode): PageBlock[] {
 
     if (cls.kind === "skip") continue;
 
-    if (cls.kind === "timestamp") {
-      const { outerOwner, timestampText } = cls;
-      const prefixes = timestampPrefixes.get(outerOwner) ?? [];
-      if (!prefixes.includes(timestampText)) prefixes.push(timestampText);
-      timestampPrefixes.set(outerOwner, prefixes);
-      continue;
-    }
-
-    // cls.kind === "normal"
-    const { owner } = cls;
+    // A video-time button ("0:02:46") belongs to the block around it, IN PLACE, so it stays on its own line.
+    const owner = cls.kind === "timestamp" ? cls.outerOwner : cls.owner;
     const nodes = groups.get(owner);
     if (nodes) nodes.push(t);
     else groups.set(owner, [t]);
@@ -374,9 +349,7 @@ export function findBlocks(root: ParentNode): PageBlock[] {
   const blocks: PageBlock[] = [];
 
   for (const [el, nodes] of groups) {
-    const prefix = (timestampPrefixes.get(el) ?? []).join(" ");
-    const ownNodes = new Set(nodes);
-    const text = buildBlockText(el, ownNodes, prefix);
+    const text = buildBlockText(el, new Set(nodes));
     const trimmed = text.trim();
 
     if (!detectLanguage(trimmed) || HANDLE_ONLY.test(trimmed)) continue;
@@ -389,20 +362,39 @@ export function findBlocks(root: ParentNode): PageBlock[] {
     blocks.push({ el, text, nodes, placement: INSERT_BREAKS.has(parentDisplay) ? "inside" : "after" });
   }
 
-  // Handle blocks that have ONLY timestamp prefixes (no own text nodes)
-  for (const [el, prefixes] of timestampPrefixes) {
-    if (groups.has(el)) continue; // already handled above
-    const text = prefixes.join(" ");
-    const trimmed = text.trim();
-    if (!detectLanguage(trimmed) || HANDLE_ONLY.test(trimmed)) continue;
-    const cs = getCS(el);
-    if (isUILabel(el, trimmed, cs)) continue;
-    const parent = el.parentElement;
-    const parentDisplay = parent instanceof HTMLElement ? style(parent).display : "";
-    blocks.push({ el, text, nodes: [], placement: INSERT_BREAKS.has(parentDisplay) ? "inside" : "after" });
-  }
-
   return blocks;
+}
+
+/** Own text nodes of `el`'s block (same rules as findBlocks; keep the two in sync). */
+function ownNodesOf(el: HTMLElement): Set<Text> {
+  const styleMap = new Map<HTMLElement, WalkStyle>();
+  const csMap = new Map<HTMLElement, CSSStyleDeclaration>();
+  const style: (e: HTMLElement) => WalkStyle = (elem) => {
+    let st = styleMap.get(elem);
+    if (!st) {
+      const c = getComputedStyle(elem);
+      st = { display: c.display, visibility: c.visibility, hidden: c.display === "none" || c.visibility === "hidden" };
+      styleMap.set(elem, st);
+    }
+    return st;
+  };
+  const getCS: (e: HTMLElement) => CSSStyleDeclaration = (elem) => {
+    let c = csMap.get(elem);
+    if (!c) {
+      c = getComputedStyle(elem);
+      csMap.set(elem, c);
+    }
+    return c;
+  };
+  const own = new Set<Text>();
+  const walker = el.ownerDocument!.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    const t = n as Text;
+    const cls = classifyText(t, el, style, getCS);
+    if (cls.kind === "skip") continue;
+    if ((cls.kind === "timestamp" ? cls.outerOwner : cls.owner) === el) own.add(t);
+  }
+  return own;
 }
 
 /**
@@ -411,49 +403,27 @@ export function findBlocks(root: ParentNode): PageBlock[] {
  */
 export function blockText(el: HTMLElement): string {
   if (isForeign(el)) return "";
-  const styleMap = new Map<HTMLElement, WalkStyle>();
-  const csMap = new Map<HTMLElement, CSSStyleDeclaration>();
+  return buildBlockText(el, ownNodesOf(el));
+}
 
-  const style: (el: HTMLElement) => WalkStyle = (elem) => {
-    let s = styleMap.get(elem);
-    if (!s) {
-      const c = getComputedStyle(elem);
-      s = { display: c.display, visibility: c.visibility, hidden: c.display === "none" || c.visibility === "hidden" };
-      styleMap.set(elem, s);
-    }
-    return s;
-  };
+export interface BlockLine {
+  /** Text of this line (no trailing newline). */
+  text: string;
+  /** The BR that ends the line; null for the last line. A line's translation goes right after it. */
+  br: HTMLElement | null;
+}
 
-  const getCS: (el: HTMLElement) => CSSStyleDeclaration = (elem) => {
-    let c = csMap.get(elem);
-    if (!c) {
-      c = getComputedStyle(elem);
-      csMap.set(elem, c);
-    }
-    return c;
-  };
-
-  const walker = el.ownerDocument!.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-  const ownNodes = new Set<Text>();
-  const timestampPrefixes: string[] = [];
-
-  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-    const t = n as Text;
-    const cls = classifyText(t, el, style, getCS);
-    if (cls.kind === "skip") continue;
-    if (cls.kind === "timestamp") {
-      const { outerOwner, timestampText } = cls;
-      if (outerOwner === el && !timestampPrefixes.includes(timestampText)) {
-        timestampPrefixes.push(timestampText);
-      }
-      continue;
-    }
-    // cls.kind === "normal"
-    if (cls.owner === el) ownNodes.add(t);
-  }
-
-  const prefix = timestampPrefixes.join(" ");
-  return buildBlockText(el, ownNodes, prefix);
+/** The block's lines in order, split at its own BR elements: `lines.map(l => l.text).join("\n") === blockText(el)`. */
+export function blockLines(el: HTMLElement): BlockLine[] {
+  if (isForeign(el)) return [];
+  const lines: BlockLine[] = [];
+  let cur: string[] = [];
+  walkBlock(el, ownNodesOf(el), (t) => cur.push(t.data), (br) => {
+    lines.push({ text: cur.join(""), br });
+    cur = [];
+  });
+  lines.push({ text: cur.join(""), br: null });
+  return lines;
 }
 
 /** Nearest non-inline ancestor of `el` (el itself included). Mutation rescan rounds changed text up to one block. */

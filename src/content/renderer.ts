@@ -3,7 +3,7 @@ import type { ChatMessage } from "./types";
 export const TRANSLATION_ATTR = "data-wst-translation";
 
 /** Light message text means a dark chat background (and vice versa). Unknown colors assume dark. */
-function chatIsDark(el: Element): boolean {
+export function chatIsDark(el: Element): boolean {
   const m = getComputedStyle(el).color.match(/[\d.]+/g);
   if (!m || m.length < 3) return true;
   const [r, g, b] = m.map(Number) as [number, number, number];

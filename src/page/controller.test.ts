@@ -119,6 +119,22 @@ describe("createPageTranslator", () => {
     expect(document.querySelector("[data-wst-translation]")).toBeNull();
   });
 
+  it("multi-line text: each translation goes directly under its own line; stop() removes them all", async () => {
+    document.body.innerHTML = `<div id="m" style="display:block"><button type="button">0:02:46</button> 메리 키타<br><button type="button">0:03:07</button> 병원 다녀온 메리<br>🎮</div>`;
+    const { t, calls } = make((s) => Promise.resolve(s.replace(/[가-힣]+/g, "X")));
+    await settle();
+    await settle();
+    const m = document.getElementById("m")!;
+    const nodes = [...m.querySelectorAll<HTMLElement>("[data-wst-translation]")];
+    expect(nodes.map((n) => n.textContent)).toEqual(["X X", "X X X"]); // per line, timestamp not repeated
+    expect(m.nextElementSibling).toBeNull(); // nothing separated below the whole text
+    expect(nodes[0]!.previousElementSibling!.tagName).toBe("BR");
+    expect(calls.every((c) => !c.includes("\n"))).toBe(true); // translated line by line
+    expect(t.stats().translated).toBe(1);
+    t.stop();
+    expect(document.querySelector("[data-wst-translation]")).toBeNull();
+  });
+
   it("off-screen blocks translate only once they intersect", async () => {
     document.body.innerHTML = `<div id="far" style="display:block">화면 밖 텍스트</div>`;
     const { t, io, calls } = make();

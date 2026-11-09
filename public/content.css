@@ -26,3 +26,12 @@
 [data-wst-translation][data-wst-theme="light"]::before {
   background: rgba(43, 125, 233, 0.15);
 }
+
+/* Multi-line text (timestamp lists): one translation line directly under each source line; chip on the first only */
+[data-wst-translation][data-wst-line] {
+  margin-top: 0;
+  margin-bottom: 2px;
+}
+[data-wst-translation][data-wst-line="next"]::before {
+  display: none;
+}

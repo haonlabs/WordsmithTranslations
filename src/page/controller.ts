@@ -3,9 +3,10 @@ import type { Lang } from "../shared/translator";
 import { detectLanguage, normalize } from "../content/language";
 import { createReadiness } from "../content/readiness";
 import { TranslationQueue } from "../content/queue";
-import { render, TRANSLATION_ATTR } from "../content/renderer";
+import { chatIsDark, render, TRANSLATION_ATTR } from "../content/renderer";
 import type { ChatMessage } from "../content/types";
-import { blockText, enclosingBlock, findBlocks, isForeign, type PageBlock } from "./blocks";
+import { blockLines, blockText, enclosingBlock, findBlocks, isForeign, type PageBlock } from "./blocks";
+import { clearLines, renderLines } from "./lines";
 import { translateChunked } from "./chunk";
 
 const FLUSH_MS = 300;
@@ -41,6 +42,7 @@ export interface PageStats {
 }
 
 interface Tracked {
+  id: string; // ties line nodes (multi-line blocks) to this block
   text: () => string;
   placement: "inside" | "after";
   requested: string; // text we last enqueued for; "" = nothing yet
@@ -64,6 +66,7 @@ export function createPageTranslator(deps: PageTranslatorDeps) {
   let styleEl: HTMLStyleElement | null = null;
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
   let active = false;
+  let seq = 0;
 
   function process(el: HTMLElement): void {
     const info = tracked.get(el);
@@ -88,6 +91,18 @@ export function createPageTranslator(deps: PageTranslatorDeps) {
           if (info.requested === text) info.requested = prev;
           return;
         }
+        // Multi-line text (e.g. a timestamp list): translation directly under each line, not one block at the end.
+        const lines = blockLines(el);
+        const outLines = out.split("\n");
+        if (lines.length >= 2 && outLines.length === lines.length && info.text() === text) {
+          const prior = el.nextElementSibling;
+          if (prior instanceof HTMLElement && prior.hasAttribute(TRANSLATION_ATTR) && prior.hasAttribute("data-wst-page")) prior.remove();
+          if (renderLines(el, info.id, lines, outLines, chatIsDark(el))) {
+            info.translated = true;
+            return;
+          }
+        }
+        clearLines(el, info.id);
         const msg: ChatMessage = {
           id: el.id || "page",
           sourceText: text,
@@ -116,7 +131,7 @@ export function createPageTranslator(deps: PageTranslatorDeps) {
     if (isForeign(blk.el)) return;
     let info = tracked.get(blk.el);
     if (!info) {
-      info = { text: () => blockText(blk.el), placement: blk.placement, requested: "", translated: false };
+      info = { id: String(++seq), text: () => blockText(blk.el), placement: blk.placement, requested: "", translated: false };
       tracked.set(blk.el, info);
       io?.observe(blk.el);
     }
