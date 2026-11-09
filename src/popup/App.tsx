@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getEnabled, setEnabled } from "../shared/settings";
 import { getStatus, prepare, type Lang, type Status } from "../shared/translator";
 import { toView, type Tone } from "./view";
+import { toPageView } from "./pageView";
+import { getActiveTab, queryPage, startPage, stopPage } from "./page";
 
 const GLYPH: Record<Tone, string> = { checking: "…", setup: "i", downloading: "↓", ready: "", paused: "", unavailable: "×", error: "!" };
 
@@ -31,11 +33,39 @@ export function App() {
   const [statuses, setStatuses] = useState<Record<Lang, Status | null>>({ ko: null, ja: null });
   const [download, setDownload] = useState<{ lang: Lang; ratio: number } | null>(null);
 
+  // Page state
+  const [tab, setTab] = useState<{ id?: number; url?: string } | null>(null);
+  const [page, setPage] = useState<{ active: boolean; translated: number } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const refresh = useCallback(() => Promise.all([getStatus("ko"), getStatus("ja")]).then(([ko, ja]) => setStatuses({ ko, ja })), []);
+
   useEffect(() => {
     getEnabled().then(setOn);
     refresh();
+
+    // Load active tab and query page status
+    getActiveTab().then((activeTab) => {
+      setTab(activeTab);
+      if (activeTab?.id != null) {
+        queryPage(activeTab.id).then(setPage);
+      }
+    });
   }, [refresh]);
+
+  // Polling queryPage every 1500 ms while tab.id is available
+  useEffect(() => {
+    if (tab?.id == null) return;
+    const id = setInterval(() => {
+      if (tab.id != null) {
+        queryPage(tab.id).then(setPage);
+      }
+    }, 1500);
+    intervalRef.current = id;
+    return () => clearInterval(id);
+  }, [tab?.id]);
 
   const toggle = (v: boolean) => {
     setOn(v);
@@ -50,7 +80,31 @@ export function App() {
     setStatuses((prev) => ({ ...prev, [lang]: s }));
   };
 
+  const onPageButton = async (action: "start" | "stop") => {
+    if (tab?.id == null) return;
+    const tabId = tab.id;
+    if (action === "start") {
+      setBusy(true);
+      const ok = await startPage(tabId);
+      if (!ok) {
+        setFailed(true);
+      } else {
+        setFailed(false);
+        const status = await queryPage(tabId);
+        setPage(status);
+      }
+      setBusy(false);
+    } else {
+      setBusy(true);
+      await stopPage(tabId);
+      const status = await queryPage(tabId);
+      setPage(status);
+      setBusy(false);
+    }
+  };
+
   const v = toView(statuses, enabled, download);
+  const pv = toPageView({ tab, statuses, page, busy, failed });
   const version = chrome.runtime.getManifest().version;
 
   return (
@@ -64,7 +118,7 @@ export function App() {
       </header>
 
       <label className="row toggle">
-        <span>Translate chat messages</span>
+        <span>Translate live chat</span>
         <input type="checkbox" role="switch" checked={enabled} onChange={(e) => toggle(e.target.checked)} />
         <i className="track" aria-hidden="true" />
       </label>
@@ -95,6 +149,21 @@ export function App() {
             <b className={`chip ${CHIP[row.state]}`}>{row.text}</b>
           </div>
         ))}
+      </div>
+
+      <div className="page">
+        <div className="row">
+          <span>This page</span>
+          <b className={`chip ${pv.chip.kind}`}>{pv.chip.text}</b>
+        </div>
+        <p className="hint">{pv.hint}</p>
+        <button
+          className={pv.button.variant}
+          disabled={pv.button.disabled}
+          onClick={() => pv.button.action && onPageButton(pv.button.action)}
+        >
+          {pv.button.label}
+        </button>
       </div>
 
       <footer className="row">
