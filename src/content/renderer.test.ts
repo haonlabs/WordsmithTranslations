@@ -45,4 +45,14 @@ describe("render", () => {
     expect(render(msg, "Hello")).toBe(false);
     expect(host.querySelector(`[${TRANSLATION_ATTR}]`)).toBeNull();
   });
+
+  it("picks the theme from the message text color (light text = dark chat)", () => {
+    src.style.color = "rgb(241, 241, 241)";
+    render(msg, "Hello");
+    const node = host.querySelector<HTMLElement>(`[${TRANSLATION_ATTR}]`)!;
+    expect(node.dataset.wstTheme).toBe("dark");
+    src.style.color = "rgb(15, 15, 15)";
+    render(msg, "Hello");
+    expect(node.dataset.wstTheme).toBe("light");
+  });
 });

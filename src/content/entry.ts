@@ -1,8 +1,7 @@
 import { getEnabled, onEnabledChange } from "../shared/settings";
-import { getStatus, prepare, translate } from "../shared/translator";
+import { remoteStatus, remoteTranslate } from "../shared/messaging";
 import { createChzzkAdapter } from "./adapters/chzzk";
 import { createYouTubeAdapter } from "./adapters/youtube";
-import { showEnableButton } from "./enable-button";
 import { needsTranslation, normalize } from "./hangul";
 import { TranslationQueue } from "./queue";
 import { render } from "./renderer";
@@ -16,21 +15,17 @@ function pickAdapter(): PlatformAdapter | null {
 
 const adapter = pickAdapter();
 if (adapter?.canRun()) {
-  const queue = new TranslationQueue({ translate });
+  const queue = new TranslationQueue({ translate: remoteTranslate });
 
-  // Translator must be 'available' before we enqueue (first-time download needs a popup click).
+  // The model must be 'available' before we enqueue (first-time setup is the popup's Enable button).
   // ponytail: messages arriving while not ready are skipped, not buffered; re-checks at most every 5s.
   let ready = false;
   let checkedAt = 0;
-  let removeButton = (): void => {};
   const isReady = async (): Promise<boolean> => {
     if (ready) return true;
     if (Date.now() - checkedAt < 5000) return false;
     checkedAt = Date.now();
-    const { state } = await getStatus();
-    ready = state === "available";
-    // Per-site model state + user-click requirement: offer a one-time on-page enable button.
-    if (state === "downloadable" || state === "downloading") removeButton = showEnableButton(prepare, () => (ready = true));
+    ready = (await remoteStatus()).state === "available";
     return ready;
   };
 
@@ -49,7 +44,6 @@ if (adapter?.canRun()) {
     else {
       adapter.stop();
       queue.clear();
-      removeButton();
     }
   };
   getEnabled().then(apply);

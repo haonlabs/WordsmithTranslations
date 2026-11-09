@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite build --watch & vite build --config vite.content.config.ts --watch",
+    "dev": "vite build --watch & for m in content background offscreen; do vite build -c vite.scripts.config.ts --mode $m --watch & done; wait",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "build": "vite build && vite build --config vite.content.config.ts"
+    "build": "vite build && for m in content background offscreen; do vite build -c vite.scripts.config.ts --mode $m || exit 1; done"
   },
   "devDependencies": {
     "@types/chrome": "^0.3.7",

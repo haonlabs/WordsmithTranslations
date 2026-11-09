@@ -1,15 +1,28 @@
 import { useCallback, useEffect, useState } from "react";
 import { getEnabled, setEnabled } from "../shared/settings";
 import { getStatus, prepare, type Status } from "../shared/translator";
+import { toView, type Tone } from "./view";
 
-const LABEL: Record<Status["state"], string> = {
-  unsupported: "Unsupported (Translator API not found in this Chrome)",
-  unavailable: "Unavailable (ko → en not supported on this device)",
-  downloadable: "Model not downloaded yet",
-  downloading: "Downloading model…",
-  available: "Ready",
-  error: "Error",
-};
+const GLYPH: Record<Tone, string> = { checking: "…", setup: "i", downloading: "↓", ready: "", paused: "", unavailable: "×", error: "!" };
+
+function Icon({ tone }: { tone: Tone }) {
+  return (
+    <span className={`icon ${tone}`} aria-hidden="true">
+      {tone === "ready" && (
+        <svg width="12" height="10" viewBox="0 0 12 10" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M1 5l3.5 3.5L11 1.5" />
+        </svg>
+      )}
+      {tone === "paused" && (
+        <>
+          <i />
+          <i />
+        </>
+      )}
+      {GLYPH[tone]}
+    </span>
+  );
+}
 
 export function App() {
   const [enabled, setOn] = useState(true);
@@ -27,33 +40,64 @@ export function App() {
     setEnabled(v);
   };
 
-  // Runs inside the click handler so Chrome sees user activation for the model download.
-  const onPrepare = async () => {
+  // Runs inside the click handler so Chrome sees user activation for the first-time model download.
+  const onEnable = async () => {
     setProgress(0);
-    setStatus(await prepare(setProgress));
+    const s = await prepare(setProgress);
     setProgress(null);
+    setStatus(s);
   };
 
-  const canPrepare = status && (status.state === "downloadable" || status.state === "downloading" || status.state === "error");
+  const v = toView(status, enabled, progress);
+  const version = chrome.runtime.getManifest().version;
 
   return (
     <main>
-      <h1>WordsmithTranslations</h1>
-      <p className="sub">Korean → English live chat</p>
-      <label className="row">
-        <input type="checkbox" checked={enabled} onChange={(e) => toggle(e.target.checked)} />
-        Translate chat messages
+      <header>
+        <img src="icons/icon-48.png" width="36" height="36" alt="" />
+        <div>
+          <h1>WordsmithTranslations</h1>
+          <p className="muted">Korean → English live chat</p>
+        </div>
+      </header>
+
+      <label className="row toggle">
+        <span>Translate chat messages</span>
+        <input type="checkbox" role="switch" checked={enabled} onChange={(e) => toggle(e.target.checked)} />
+        <i className="track" aria-hidden="true" />
       </label>
-      <p className={`status ${status?.state ?? ""}`}>
-        {status ? LABEL[status.state] : "Checking…"}
-        {status?.state === "error" && <small>{status.message}</small>}
-        {progress !== null && <small>{Math.round(progress * 100)}%</small>}
-      </p>
-      <div className="row">
-        {canPrepare && <button onClick={onPrepare}>Prepare translation</button>}
-        <button onClick={refresh}>Check again</button>
+
+      <section className={`card ${v.tone}`} aria-live="polite">
+        <Icon tone={v.tone} />
+        <div>
+          <strong>{v.title}</strong>
+          <p>{v.hint}</p>
+          {v.progress !== null && (
+            <div className="bar">
+              <div style={{ width: `${Math.round(v.progress * 100)}%` }} />
+            </div>
+          )}
+        </div>
+      </section>
+
+      {v.cta && (
+        <button className="primary" disabled={v.cta.disabled} onClick={onEnable}>
+          {v.cta.label}
+        </button>
+      )}
+
+      <div className="row works">
+        <span className="muted">Works on</span>
+        <span className="chips">
+          <b>YouTube Live</b>
+          <b>CHZZK</b>
+        </span>
       </div>
-      <p className="sub">Chrome tracks the model per site. The first time on YouTube or CHZZK, click the “Enable translation” button that appears in the chat.</p>
+
+      <footer className="row">
+        <span className="faint">v{version} · needs Chrome 138+</span>
+        {v.check && <button onClick={refresh}>Check again</button>}
+      </footer>
     </main>
   );
 }

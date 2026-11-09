@@ -55,7 +55,8 @@ If the selected Chrome TypeScript definitions do not include the Translator API,
 - Create/reuse a translator only when supported.
 - Handle model download or user-facing unavailable states.
 - Re-check the current Chrome documentation for API status, origin/trial/flag requirements, supported language pairs, and extension content-script availability before coding.
-- If API cannot be called in the content script context, isolate translation invocation in the extension context that Chrome documents as supported and communicate using `chrome.runtime` messaging. Do not silently switch to a remote API.
+- Translation is isolated in an offscreen document (extension origin) and reached from content scripts via `chrome.runtime` messaging through the service worker (see ARCHITECTURE.md). Never a remote API.
+- Build: popup via `vite.config.ts`; content script, service worker and offscreen page each as a separate IIFE via `vite.scripts.config.ts --mode content|background|offscreen`.
 
 ## Build commands (proposed)
 

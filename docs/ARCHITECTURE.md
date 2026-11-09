@@ -19,8 +19,10 @@ React digunakan untuk popup/options UI. Content script berinteraksi dengan DOM h
 
 ### Extension shell
 - `manifest.json`: MV3 metadata, permissions, host matches, content scripts, service worker, popup.
-- `background/service-worker.ts`: lifecycle ringan, message routing bila diperlukan.
-- `popup/`: React UI untuk status dan enable/disable.
+- `background/index.ts`: service worker. Hanya me-relay pesan `translate`/`status` dari content script ke offscreen document dan membuatnya bila belum ada. Tidak memanggil Translator API.
+- `offscreen/index.ts` + `offscreen.html`: document extension-origin yang memegang Translator API (API hanya ada di document, status model dicatat Chrome per origin). Satu klik "Enable translation" di popup menyiapkan model untuk semua situs.
+- `popup/`: React UI: status (`view.ts` memetakan status → tampilan), toggle, tombol Enable translation (user gesture untuk unduh model pertama).
+- `shared/messaging.ts`: `remoteStatus()` / `remoteTranslate()` yang dipakai content script.
 - `content/entry.ts`: deteksi host dan bootstrap adapter.
 
 ### Platform adapters
@@ -59,6 +61,8 @@ Selectors must be isolated in adapter files and treated as volatile implementati
 - Attach result to originating message only if node remains connected and still represents same message.
 
 ### Translation service
+Berjalan di offscreen document (bukan content script). Alasan (diamati 2026-11-09): status model Translator dilaporkan per origin dan `create()` perlu klik pengguna di origin itu, jadi dari content script tiap situs butuh klik sendiri. Dengan origin extension tunggal, satu klik popup cukup. Alur: content script → `chrome.runtime.sendMessage` → service worker → offscreen document → `translator.translate()`.
+
 Use Chrome Built-in AI Translator API:
 
 ```ts
