@@ -29,7 +29,7 @@ export function App() {
   const [status, setStatus] = useState<Status | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
 
-  const refresh = useCallback(() => getStatus().then(setStatus), []);
+  const refresh = useCallback(() => getStatus("ko").then(setStatus), []);
   useEffect(() => {
     getEnabled().then(setOn);
     refresh();
@@ -43,7 +43,7 @@ export function App() {
   // Runs inside the click handler so Chrome sees user activation for the first-time model download.
   const onEnable = async () => {
     setProgress(0);
-    const s = await prepare(setProgress);
+    const s = await prepare("ko", setProgress);
     setProgress(null);
     setStatus(s);
   };

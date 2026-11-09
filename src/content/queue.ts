@@ -1,7 +1,8 @@
+import type { Lang } from "../shared/translator";
 import { LRU } from "./lru";
 
 export interface QueueOptions {
-  translate: (text: string) => Promise<string>;
+  translate: (text: string, lang: Lang) => Promise<string>;
   concurrency?: number;
   /** Pending jobs beyond this drop the OLDEST (chat is read newest-first). */
   maxQueue?: number;
@@ -12,6 +13,7 @@ export interface QueueOptions {
 interface Job {
   key: string;
   text: string;
+  lang: Lang;
   tries: number;
   resolve: (v: string) => void;
   reject: (e: unknown) => void;
@@ -37,16 +39,18 @@ export class TranslationQueue {
     this.cache = new LRU(opts.cacheSize ?? 500);
   }
 
-  enqueue(key: string, text = key): Promise<string> {
-    const hit = this.cache.get(key);
+  enqueue(key: string, text: string, lang: Lang): Promise<string> {
+    // key includes the language so the same text in different languages doesn't collide
+    const cacheKey = `${lang}|${key}`;
+    const hit = this.cache.get(cacheKey);
     if (hit !== undefined) return Promise.resolve(hit);
-    const existing = this.inflight.get(key);
+    const existing = this.inflight.get(cacheKey);
     if (existing) return existing;
 
     const p = new Promise<string>((resolve, reject) => {
-      this.pending.push({ key, text, tries: 0, resolve, reject });
+      this.pending.push({ key: cacheKey, text, lang, tries: 0, resolve, reject });
     });
-    this.inflight.set(key, p);
+    this.inflight.set(cacheKey, p);
     p.catch(() => {}); // caller handles; avoid unhandled rejection for dropped jobs
     while (this.pending.length > this.maxQueue) this.fail(this.pending.shift()!, new Error("dropped"));
     this.pump();
@@ -68,7 +72,7 @@ export class TranslationQueue {
       const job = this.pending.shift()!;
       this.running++;
       this.opts
-        .translate(job.text)
+        .translate(job.text, job.lang)
         .then((out) => {
           this.cache.set(job.key, out); // successes only
           this.inflight.delete(job.key);
