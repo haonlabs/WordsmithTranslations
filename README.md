@@ -25,7 +25,9 @@ Beyond live chat, the extension can translate Korean or Japanese text on **any**
 1. Open a page with Korean or Japanese text (an article, comments, docs — anything).
 2. Click the extension icon and press **Translate this page**. The language models must already be enabled in the popup (same `ko → en` / `ja → en` models as chat).
 3. Translations appear **below the original text** (originals are never modified), automatically for blocks visible in the viewport (plus a 300px margin), and keep up with new content: newly loaded comments, "Read more" expansions, and SPA changes on the same page.
-4. Press **Stop translating** in the popup to remove all translations and stop watching. Opening a new page (full document navigation) stops the feature; press the button again on the new page.
+4. **Menus, buttons and other short UI text** (for example "팔로우", "전체 방송") are translated too, but never inserted into the page: they appear as small **floating labels** in our own layer, in free space next to the element (right, below, above or left, never over other text). If there is no free space, the label shows as a tooltip while you hover or focus the element. Names, dates and counts (nicknames, "10.28", "팔로워 18만명") are left alone. The labels follow the page while scrolling. The setting `uiLabels` (default on, `chrome.storage.local`) turns them off; there is no popup switch for it yet.
+5. Multi-line text (such as a timestamp list) is translated line by line, each translation directly under its own line.
+6. Press **Stop translating** in the popup to remove all translations and labels and stop watching. Opening a new page (full document navigation) stops the feature; press the button again on the new page.
 
 The button injects the translation script into the active tab via `chrome.scripting.executeScript` with the `activeTab` + `scripting` permissions — no `<all_urls>` or broad host permissions. Access applies only to the tab you clicked on and ends when the tab navigates or closes.
 

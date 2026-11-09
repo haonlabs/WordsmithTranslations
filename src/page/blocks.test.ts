@@ -355,3 +355,18 @@ describe("blockText", () => {
     expect(blockText(b)).toBe("줄1\n줄2\n줄3");
   });
 });
+
+describe("names are not UI labels, even when the name token sits on a wrapper above the text's own block", () => {
+  it("chat-style nickname: button > span > span > span.name text", () => {
+    document.body.innerHTML = `<div class="_chatting_message_w9pvh_21" style="display:block"><button type="button" class="_nickname_w9pvh_33" style="display:inline-flex"><span class="_container_1mc5x_2" style="display:flex"><span class="_nickname_1mc5x_80" style="display:block"><span class="_ellipsis_8bw0p_6" style="display:inline-flex"><span class="_text_8bw0p_2" style="display:block">단추꿰인곰인형</span></span></span></span></button><span>메시지 본문이 여기 있습니다</span></div>`;
+    const texts = findBlocks(document.body).map((b) => b.text);
+    expect(texts).not.toContain("단추꿰인곰인형");
+    expect(texts.some((t) => t.includes("메시지 본문"))).toBe(true);
+  });
+
+  it("a real button next to it is still a UI label", () => {
+    document.body.innerHTML = `<div style="display:block"><button type="button" class="_button_x">팔로우</button></div>`;
+    const b = findBlocks(document.body);
+    expect(b.map((x) => [x.kind, x.text])).toEqual([["ui", "팔로우"]]);
+  });
+});

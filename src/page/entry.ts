@@ -11,6 +11,8 @@ const g = globalThis as typeof globalThis & { __wstPage?: PageHandle };
 // Injected on demand (popup -> chrome.scripting.executeScript). A second injection must not build a second engine.
 // The stored preference is read async first: popups keep working even while storage is slow.
 if (!g.__wstPage && document.body) {
+  // claim the slot NOW: the settings read below is async, and a second injection in that gap must not build a second engine
+  g.__wstPage = { stats: () => ({ active: false, translated: 0 }), stop: () => {} };
   chrome.storage.local.get({ uiLabels: true }, (cfg) => {
     const translator = createPageTranslator({
       translate: remoteTranslate,

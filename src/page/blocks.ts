@@ -163,9 +163,11 @@ function isUiCandidate(el: HTMLElement, trimmed: string, cs: CSSStyleDeclaration
 /** Short text (< 40 chars) on owner/parent carrying a name/date/count token is skipped entirely. */
 function hasSkipLabelToken(el: HTMLElement, trimmed: string): boolean {
   if (trimmed.length >= 40) return false;
-  const parent = el.parentElement;
-  const tokens = [...classTokens(el.className), ...(parent instanceof HTMLElement ? classTokens(parent.className) : [])];
-  return tokens.some((t) => SKIP_LABEL_TOKENS.has(t));
+  let a: Element | null = el;
+  for (let i = 0; a && i <= TOKEN_REACH; i++, a = a.parentElement) {
+    if (a instanceof HTMLElement && classTokens(a.className).some((t) => SKIP_LABEL_TOKENS.has(t))) return true;
+  }
+  return false;
 }
 
 /** True for elements whose text should surface as a floating label (interactive/landmark or a short anchor). */
@@ -176,10 +178,17 @@ function isUiLabelEl(el: HTMLElement): boolean {
 }
 
 /** True when any element from `t` up to (and including) `stop` carries a name/date/count class token. */
+// How many ancestors above the block owner still count as "this is a name/date/count": the token usually sits on a
+// wrapper (e.g. <button class="_nickname_…"><span class="_text_…">name</span></button>), not on the text's own span.
+const TOKEN_REACH = 4;
+
 function chainHasSkipToken(t: Text, stop: HTMLElement): boolean {
+  let beyond = 0;
+  let passed = false;
   for (let a: Element | null = t.parentElement; a; a = a.parentElement) {
     if (a instanceof HTMLElement && classTokens(a.className).some((tok) => SKIP_LABEL_TOKENS.has(tok))) return true;
-    if (a === stop) break;
+    if (a === stop) passed = true;
+    else if (passed && ++beyond >= TOKEN_REACH) break;
   }
   return false;
 }

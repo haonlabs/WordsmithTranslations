@@ -58,7 +58,14 @@ describe("createOverlay", () => {
 
   beforeEach(() => {
     document.body.innerHTML = "";
-    elementFromPointMock = vi.fn(() => null);
+    // like a browser: the topmost element at a point is the button whose (mocked) rect covers it
+    elementFromPointMock = vi.fn((x: number, y: number) => {
+      for (const b of Array.from(document.body.querySelectorAll("button"))) {
+        const r = b.getBoundingClientRect();
+        if (r.width > 0 && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return b;
+      }
+      return null;
+    });
     rAFMock = vi.fn((cb: () => void) => {
       return setTimeout(cb, 0) as unknown as void;
     });
@@ -110,6 +117,44 @@ describe("createOverlay", () => {
     expect(overlay.count()).toBe(1);
     expect(document.querySelectorAll("[data-wst-float]")).toHaveLength(1);
     expect(floatLabel().textContent).toBe("B");
+  });
+
+  it("a target clipped or covered at its centre gets no label (something else is painted there)", async () => {
+    const target = document.body.appendChild(document.createElement("button"));
+    mockRect(target, rect(0, 0, 100, 40));
+    elementFromPointMock.mockImplementation(() => document.body); // e.g. scrolled out of its container
+    overlay.setLabel(target, "T");
+    await flushFrame();
+    expect(floatLabel().style.display).toBe("none");
+    elementFromPointMock.mockImplementation(() => target); // painted again
+    window.dispatchEvent(new Event("resize"));
+    await flushFrame();
+    expect(floatLabel().style.display).toBe("block");
+  });
+
+  it("scroll carries the label along without re-probing; once scrolling settles it probes again", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const target = document.body.appendChild(document.createElement("button"));
+      mockRect(target, rect(0, 100, 100, 40));
+      const isFree = vi.fn(() => true);
+      overlay.destroy();
+      overlay = createOverlay(document, { ...deps, isFree, rAF: (cb) => void setTimeout(cb, 0) });
+      overlay.setLabel(target, "T");
+      await vi.advanceTimersByTimeAsync(10);
+      const probes = isFree.mock.calls.length;
+      expect(probes).toBeGreaterThan(0);
+      expect(floatLabel().style.top).toBe("120px");
+      mockRect(target, rect(0, 60, 100, 40)); // the page scrolled up by 40px
+      window.dispatchEvent(new Event("scroll"));
+      await vi.advanceTimersByTimeAsync(10);
+      expect(floatLabel().style.top).toBe("80px"); // moved with its target
+      expect(isFree.mock.calls.length).toBe(probes); // no new probe while scrolling
+      await vi.advanceTimersByTimeAsync(200); // scrolling stopped
+      expect(isFree.mock.calls.length).toBeGreaterThan(probes);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("invisible targets hide their label; detached targets are removed", async () => {
