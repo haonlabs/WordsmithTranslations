@@ -2,8 +2,11 @@
 
 ## 1. Unit tests
 
-### Hangul filter
+### Script filter (Hangul / kana)
 - Korean sentence → accepted.
+- Japanese kana sentence (`こんにちは`) → accepted.
+- Japanese kanji-only (`草`) → skipped (indistinguishable from Mandarin).
+- Korean + Japanese mixed message → accepted.
 - Korean + English mixed sentence → accepted.
 - English-only sentence → skipped.
 - URL-only → skipped.
@@ -35,7 +38,7 @@
 
 ## 2. Adapter tests
 
-Use representative HTML fixtures captured from current versions of each platform. Do not rely exclusively on hand-written selectors with no fixture validation.
+Use representative HTML fixtures captured from current versions of each platform. Do not rely exclusively on hand-written selectors with no fixture validation. Korean and Japanese chats use the same adapters for each platform; adapters do not filter by language, the pipeline decides.
 
 ### YouTube
 - Normal live chat message.
@@ -59,10 +62,10 @@ Use representative HTML fixtures captured from current versions of each platform
 1. Install unpacked extension in a clean Chrome profile.
 2. Open popup and verify Translator API status.
 3. If model is not available, verify UI communicates download/unavailable state.
-4. Open YouTube Live Chat with Korean messages.
-5. Verify each new Hangul message receives one English translation below it.
+4. Open YouTube Live Chat with Korean and Japanese messages.
+5. Verify each new Hangul or kana message receives one English translation below it.
 6. Verify English-only messages are skipped.
-7. Verify mixed Korean-English messages are translated.
+7. Verify mixed Korean-English and Japanese-English messages are translated.
 8. Repeat on CHZZK.
 9. Disable extension and verify new messages are no longer translated.
 10. Re-enable and verify translation resumes.
@@ -77,10 +80,12 @@ Use representative HTML fixtures captured from current versions of each platform
 - [ ] Popup works and setting persists.
 - [ ] Translator API availability is checked.
 - [ ] Korean → English pair works in actual Chrome environment.
+- [ ] Japanese → English pair works in actual Chrome environment.
+- [ ] Each language gets its own Enable click (one model download per click); Korean translation still works when Japanese is not yet enabled.
 - [ ] YouTube adapter verified on live chat.
 - [ ] CHZZK adapter verified on live chat.
 - [ ] Inline translation preserves original message.
-- [ ] Non-Hangul-only messages skipped.
+- [ ] Messages without Hangul or kana are skipped (including Japanese kanji-only messages).
 - [ ] Queue/cache/deduplication tested.
 - [ ] SPA navigation tested.
 - [ ] No backend or external translation API.

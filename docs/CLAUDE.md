@@ -18,8 +18,9 @@ Read:
 - Chrome Extension Manifest V3.
 - React + Vite + TypeScript.
 - YouTube Live Chat and CHZZK only.
-- Korean (`ko`) → English (`en`).
-- Automatically translate every message containing Hangul.
+- Source languages: Korean (`ko`) and Japanese (`ja`) → English (`en`).
+- Automatically translate every message containing Hangul or kana (script-based per-message detection only: Hangul → `ko`, kana → `ja`; dominant script wins on mixed messages).
+- Chrome only allows one model download per user click: each language is prepared with its own "Enable" click in the popup; Korean keeps working even if Japanese hasn't been enabled yet.
 - Preserve original message and render English below it.
 - Use Chrome Built-in AI Translator API.
 - No backend, no Google Cloud Translation API, no API key, and no external translation provider.
@@ -34,7 +35,7 @@ Do not start by building the complete extension.
 First perform **Milestone 0: API feasibility spike**:
 1. Consult current official Chrome Translator API docs.
 2. Verify current API status and requirements.
-3. Verify that the `ko` → `en` language pair is supported.
+3. Verify that the `ko` → `en` and `ja` → `en` language pairs are supported.
 4. Verify whether the API is callable from the intended Chrome extension context (content script vs extension page). Translator API is document-bound; do not call it from the MV3 service worker.
 5. Test YouTube chat iframe context. Cross-origin iframes need the embedding page to delegate the `translator` Permissions Policy; do not assume YouTube delegates it.
 6. Verify whether first-time model download requires a user gesture and implement an explicit user-initiated preparation flow.
