@@ -22,6 +22,26 @@ describe("render", () => {
     expect(src.textContent).toBe("안녕하세요");
   });
 
+  it("placement after: renders as a marked sibling and updates it instead of duplicating", () => {
+    const after = { ...msg, placement: "after" as const, readText: () => "안녕하세요" };
+    expect(render(after, "Hello")).toBe(true);
+    const node = host.nextElementSibling!;
+    expect(node.hasAttribute(TRANSLATION_ATTR)).toBe(true);
+    expect(node.getAttribute("data-wst-page")).toBe("true"); // stop() cleanup marker
+    expect(node.textContent).toBe("Hello");
+    expect(src.textContent).toBe("안녕하세요");
+    expect(render(after, "Hi")).toBe(true);
+    const nodes = document.body.querySelectorAll(`[${TRANSLATION_ATTR}]`);
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0]).toBe(node);
+    expect(node.textContent).toBe("Hi");
+  });
+
+  it("stale check prefers readText over textContent", () => {
+    expect(render({ ...msg, readText: () => "다른 텍스트" }, "Hello")).toBe(false);
+    expect(host.querySelector(`[${TRANSLATION_ATTR}]`)).toBeNull();
+  });
+
   it("updates the existing node instead of duplicating", () => {
     render(msg, "Hello");
     render(msg, "Hi");

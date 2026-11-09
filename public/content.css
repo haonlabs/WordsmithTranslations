@@ -26,3 +26,42 @@
 [data-wst-translation][data-wst-theme="light"]::before {
   background: rgba(43, 125, 233, 0.15);
 }
+
+/* Multi-line text (timestamp lists): one translation line directly under each source line; chip on the first only */
+[data-wst-translation][data-wst-line] {
+  margin-top: 0;
+  margin-bottom: 2px;
+}
+[data-wst-translation][data-wst-line="next"]::before {
+  display: none;
+}
+
+/* Floating UI labels (menus, buttons): one layer owned by us, never inside the page layout */
+[data-wst-overlay] {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2147483646;
+}
+[data-wst-translation][data-wst-float] {
+  position: fixed;
+  display: none;
+  z-index: 2147483647;
+  pointer-events: none;
+  max-width: 240px;
+  margin: 0;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font: 600 11px/1.4 system-ui, sans-serif;
+  color: #ffffff;
+  background: rgba(29, 95, 192, 0.94);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  white-space: nowrap;
+  word-break: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 1;
+}
+[data-wst-float]::before {
+  content: none; /* no EN chip: the label stands next to its own element */
+}

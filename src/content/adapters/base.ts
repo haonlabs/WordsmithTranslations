@@ -1,5 +1,5 @@
 import { TRANSLATION_ATTR } from "../renderer";
-import type { ChatMessage, PlatformAdapter } from "../types";
+import { CHAT_CONTAINER_ATTR, type ChatMessage, type PlatformAdapter } from "../types";
 
 export interface AdapterConfig {
   platform: ChatMessage["platform"];
@@ -52,7 +52,9 @@ export function createAdapter(cfg: AdapterConfig, doc: Document = document): Pla
 
   function attach(container: Element): void {
     observer?.disconnect();
+    current?.removeAttribute(CHAT_CONTAINER_ATTR); // engine scanners skip inside the chat container
     current = container;
+    container.setAttribute(CHAT_CONTAINER_ATTR, "");
     observer = new MutationObserver(onMutations);
     observer.observe(container, cfg.observe);
     for (const m of [...container.querySelectorAll(cfg.message)].slice(-INITIAL_SCAN_MAX)) emit(m);
@@ -77,6 +79,7 @@ export function createAdapter(cfg: AdapterConfig, doc: Document = document): Pla
       timer = null;
       observer?.disconnect();
       observer = null;
+      current?.removeAttribute(CHAT_CONTAINER_ATTR);
       current = null;
       onMessage = null;
     },

@@ -1,13 +1,13 @@
 {
   "name": "wordsmith-translations",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite build --watch & for m in content background offscreen; do vite build -c vite.scripts.config.ts --mode $m --watch & done; wait",
+    "dev": "vite build --watch & for m in content background offscreen page; do vite build -c vite.scripts.config.ts --mode $m --watch & done; wait",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "build": "vite build && for m in content background offscreen; do vite build -c vite.scripts.config.ts --mode $m || exit 1; done"
+    "build": "vite build && for m in content background offscreen page; do vite build -c vite.scripts.config.ts --mode $m || exit 1; done"
   },
   "devDependencies": {
     "@types/chrome": "^0.3.7",

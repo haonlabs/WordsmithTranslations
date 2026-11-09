@@ -115,7 +115,25 @@ Treat the API as progressive enhancement:
 - Use Shadow DOM only if it proves necessary; keep initial implementation simple.
 - On message node removal/reuse, ensure translation is not attached to a different message.
 
-## 3. React boundary
+## 3. Page translation ("Translate this page")
+
+Selain chat live, popup bisa menyuntikkan script terjemahan halaman ke tab aktif:
+
+```text
+Popup ("Translate this page") ─> chrome.scripting.executeScript (activeTab + scripting)
+                              ─> page.js di tab aktif
+                              ─> messaging (service worker) ─> offscreen Translator
+```
+
+Komponen baru di `src/page/`:
+- `blocks.ts`: menemukan blok teks Korea/Jepang yang terlihat di viewport (+ margin 300px), melewati node extension-owned, elemen interaktif, dan container chat yang sudah ditandai `data-wst-chat-container` (ditandai adapter chat agar chat tidak diterjemahkan dua kali).
+- `controller.ts`: lifecycle fitur. Memasang `IntersectionObserver` untuk menerjemahkan blok saat masuk viewport, `MutationObserver` untuk konten baru (komentar yang baru dimuat, "Read more", perubahan SPA di halaman yang sama), merender terjemahan di bawah teks asli (teks asli tidak diubah), dan membersihkan semuanya saat stop.
+- `chunk.ts`: memecah teks > 1000 karakter per kalimat sebelum masuk queue. Translator API memproses satu permintaan pada satu waktu, jadi halaman sangat panjang diterjemahkan bertahap saat di-scroll.
+- `entry.ts`: titik masuk `page.js` yang di-inject.
+
+Akses berakhir saat tab berpindah halaman (navigasi dokumen penuh) atau ditutup; pengguna menekan tombol lagi di halaman baru. Tidak ada `<all_urls>` atau host permission luas. Batasan: halaman yang diblokir Chrome (`chrome://`, Chrome Web Store), iframe lintas-origin, dan Shadow DOM tertutup tidak tercakup.
+
+## 4. React boundary
 
 React should own:
 - Popup UI.
@@ -130,14 +148,14 @@ Content script should own:
 
 Avoid mounting a React root into each chat message. Direct DOM insertion is more robust and lightweight for this use case.
 
-## 4. Messaging and storage
+## 5. Messaging and storage
 
 - `chrome.storage.local`: enabled state and non-sensitive preferences only.
 - `chrome.runtime.sendMessage`: popup-to-background/content status or settings updates if needed.
 - Do not store chat history or translated chat contents persistently.
 - Do not request broad permissions such as `<all_urls>`.
 
-## 5. SPA and lifecycle
+## 6. SPA and lifecycle
 
 - Detect URL changes and chat container replacement.
 - Make `start()` idempotent.
@@ -145,7 +163,7 @@ Avoid mounting a React root into each chat message. Direct DOM insertion is more
 - Reinitialize adapter after navigation.
 - Ensure stale async translation results are not rendered into a new room or reused message node.
 
-## 6. Security and privacy
+## 7. Security and privacy
 
 - No backend and no external translation API.
 - Translation runs through Chrome's built-in Translator API.

@@ -17,6 +17,7 @@ describe("youtube adapter", () => {
   it("initial scan emits only text messages, with text and host", () => {
     const a = createYouTubeAdapter(document);
     a.start(collect);
+    expect(document.querySelector("#items")!.hasAttribute("data-wst-chat-container")).toBe(true); // page engine skips chat
     a.stop();
     expect(got.map((m) => m.sourceText)).toEqual(["수구리 망상증환자", "뭔가 참아 왔던게 터진 느낌...."]);
     expect(got[0]!.id).toBe("ChwKGkNPN3JwYmlDLTVjREZjeHBUQWdkWVNRS093");
@@ -59,6 +60,7 @@ describe("youtube adapter", () => {
     a.start(collect);
     a.start(collect);
     a.stop();
+    expect(document.querySelector("#items")!.hasAttribute("data-wst-chat-container")).toBe(false); // cleared on stop
     a.stop();
     got.length = 0;
     const el = document.createElement("yt-live-chat-text-message-renderer");
@@ -77,6 +79,7 @@ describe("youtube adapter", () => {
       `<div id="items" class="style-scope yt-live-chat-item-list-renderer"><yt-live-chat-text-message-renderer id="r1"><div id="content"><span id="message">교체 후</span></div></yt-live-chat-text-message-renderer></div>`;
     await vi.advanceTimersByTimeAsync(1100);
     expect(got.map((m) => m.sourceText)).toEqual(["교체 후"]);
+    expect(document.querySelector("#items")!.hasAttribute("data-wst-chat-container")).toBe(true); // re-marked
     a.stop();
   });
 
