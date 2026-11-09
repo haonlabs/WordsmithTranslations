@@ -31,12 +31,9 @@ export function render(msg: ChatMessage, translated: string): boolean {
   if (!node) {
     node = host.ownerDocument.createElement("div");
     node.setAttribute(TRANSLATION_ATTR, "true");
-    if (msg.placement === "after") {
-      node.setAttribute("data-wst-page", "true");
-      host.after(node);
-    } else {
-      host.appendChild(node);
-    }
+    if (msg.platform === "page" || msg.placement === "after") node.setAttribute("data-wst-page", "true"); // stop() removes these, "inside" included
+    if (msg.placement === "after") host.after(node);
+    else host.appendChild(node);
   }
   node.dataset.wstTheme = chatIsDark(sourceElement) ? "dark" : "light"; // content.css picks the contrast-safe blue
   if (node.textContent !== translated) node.textContent = translated;

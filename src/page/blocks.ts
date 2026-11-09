@@ -12,6 +12,16 @@ export interface PageBlock {
 
 const SKIP_TAGS = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "TEXTAREA", "INPUT", "SELECT", "CODE", "PRE"]);
 const SKIP_ATTRS = ["contenteditable", TRANSLATION_ATTR, CHAT_CONTAINER_ATTR];
+const SKIP_ANCESTOR = SKIP_ATTRS.map((a) => `[${a}]`).join(",");
+
+/**
+ * True when `el` itself or any ancestor (however far up, past any scan boundary) is engine-owned, editable or a
+ * chat container. A rescan of a newly added chat message starts at that message's own block, so the container
+ * attribute lives ABOVE the boundary and the per-text-node walk never reaches it.
+ */
+export function isForeign(el: Element | null): boolean {
+  return !!el && el.closest(SKIP_ANCESTOR) !== null;
+}
 const INLINE_DISPLAY = new Set(["inline", "contents"]);
 // A new sibling of this block's element would become a flex/grid/table item and break the layout
 const INSERT_BREAKS = new Set(["flex", "inline-flex", "grid", "inline-grid", "table-row", "table", "table-row-group"]);
@@ -309,6 +319,7 @@ function buildBlockText(blockEl: HTMLElement, ownNodes: Set<Text>, prefix: strin
  * their own text, so nothing is translated twice; inline elements (span/a) flow into the parent block.
  */
 export function findBlocks(root: ParentNode): PageBlock[] {
+  if (root instanceof Element && isForeign(root)) return [];
   const styleMap = new Map<HTMLElement, WalkStyle>();
   const csMap = new Map<HTMLElement, CSSStyleDeclaration>();
 
@@ -399,6 +410,7 @@ export function findBlocks(root: ParentNode): PageBlock[] {
  * BR elements belonging to this block are represented as "\n".
  */
 export function blockText(el: HTMLElement): string {
+  if (isForeign(el)) return "";
   const styleMap = new Map<HTMLElement, WalkStyle>();
   const csMap = new Map<HTMLElement, CSSStyleDeclaration>();
 

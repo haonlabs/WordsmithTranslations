@@ -5,7 +5,7 @@ import { createReadiness } from "../content/readiness";
 import { TranslationQueue } from "../content/queue";
 import { render, TRANSLATION_ATTR } from "../content/renderer";
 import type { ChatMessage } from "../content/types";
-import { blockText, enclosingBlock, findBlocks, type PageBlock } from "./blocks";
+import { blockText, enclosingBlock, findBlocks, isForeign, type PageBlock } from "./blocks";
 import { translateChunked } from "./chunk";
 
 const FLUSH_MS = 300;
@@ -113,6 +113,7 @@ export function createPageTranslator(deps: PageTranslatorDeps) {
   }
 
   function track(blk: PageBlock): void {
+    if (isForeign(blk.el)) return;
     let info = tracked.get(blk.el);
     if (!info) {
       info = { text: () => blockText(blk.el), placement: blk.placement, requested: "", translated: false };
@@ -132,7 +133,8 @@ export function createPageTranslator(deps: PageTranslatorDeps) {
 
   const isEngineNode = (n: Node): boolean => {
     const el = n instanceof Element ? n : n.parentElement;
-    return !!el && (el.closest(TR_SELECTOR) !== null || el.hasAttribute("data-wst-style") || el.tagName === "STYLE");
+    // engine nodes, our <style>, and live chat (translated by the chat engine, never by this one)
+    return !!el && (isForeign(el) || el.hasAttribute("data-wst-style") || el.tagName === "STYLE");
   };
 
   function onMutations(records: MutationRecord[]): void {
@@ -150,7 +152,7 @@ export function createPageTranslator(deps: PageTranslatorDeps) {
     const blocks = new Set<HTMLElement>();
     for (const node of pending.splice(0)) {
       const el = node.nodeType === 1 && node instanceof Element ? node : node.parentElement;
-      if (!el || !el.isConnected || el.closest(TR_SELECTOR)) continue;
+      if (!el || !el.isConnected || isForeign(el)) continue;
       const block = enclosingBlock(el);
       if (block) blocks.add(block);
     }

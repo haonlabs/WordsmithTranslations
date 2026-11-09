@@ -89,6 +89,36 @@ describe("createPageTranslator", () => {
     t.stop();
   });
 
+  it("chat messages that arrive AFTER start are never translated by the page engine", async () => {
+    const { t, calls } = make();
+    await settle();
+    calls.length = 0;
+    const chat = document.getElementById("chat")!;
+    const msg = document.createElement("div");
+    msg.style.display = "block";
+    msg.textContent = "나중에 온 채팅 메시지";
+    chat.appendChild(msg);
+    const nested = document.createElement("div");
+    nested.innerHTML = `<span style="display:block">깊이 중첩된 채팅</span>`;
+    chat.appendChild(nested);
+    await settle();
+    await settle();
+    expect(calls).toEqual([]);
+    expect(chat.querySelector("[data-wst-translation]")).toBeNull();
+    t.stop();
+  });
+
+  it("inside-placement translations carry the page marker, so stop() removes them", async () => {
+    document.body.innerHTML = `<div style="display:flex"><div id="f1" style="display:block">플렉스 안의 블록</div></div>`;
+    const { t } = make();
+    await settle();
+    const f1 = document.getElementById("f1")!;
+    const node = f1.querySelector<HTMLElement>("[data-wst-translation]")!;
+    expect(node.getAttribute("data-wst-page")).toBe("true");
+    t.stop();
+    expect(document.querySelector("[data-wst-translation]")).toBeNull();
+  });
+
   it("off-screen blocks translate only once they intersect", async () => {
     document.body.innerHTML = `<div id="far" style="display:block">화면 밖 텍스트</div>`;
     const { t, io, calls } = make();

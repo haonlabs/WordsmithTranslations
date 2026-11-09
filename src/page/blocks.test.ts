@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import chzzkFixture from "../../test/fixtures/chzzk-comments.html?raw";
-import { blockText, findBlocks, type PageBlock } from "./blocks";
+import { blockText, findBlocks, isForeign, type PageBlock } from "./blocks";
 
 let body: HTMLElement;
 const scan = (): PageBlock[] => findBlocks(document.body);
@@ -56,6 +56,16 @@ describe("findBlocks", () => {
     const blocks = scan();
     expect(blocks.map((b) => b.el.id)).toEqual(["host2", "kept"]);
     expect(blocks[0]!.text).toBe("한국어"); // the marked span's own text is ignored
+  });
+
+  it("a rescan root INSIDE a chat container is skipped (container attribute is above the boundary)", () => {
+    document.body.innerHTML = `<div data-wst-chat-container><div id="m" style="display:block">나중에 온 채팅</div></div>`;
+    const m = document.getElementById("m")!;
+    expect(isForeign(m)).toBe(true);
+    expect(findBlocks(m)).toEqual([]);
+    expect(blockText(m)).toBe("");
+    document.body.innerHTML = `<div><div id="n" style="display:block">일반 문단 텍스트</div></div>`;
+    expect(findBlocks(document.getElementById("n")!)).toHaveLength(1);
   });
 
   it("placement is inside when the parent breaks on insertion (flex)", () => {
