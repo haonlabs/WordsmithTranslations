@@ -1,9 +1,10 @@
 /**
- * Floating-label overlay for UI text (menus, buttons): translations live in ONE of our own layers
- * appended to document.documentElement — nothing is ever inserted into the page's layout. The only
- * things attached to page elements are mouseenter/mouseleave/focus/blur listeners, all removed on
- * removeLabel/destroy. Every label carries data-wst-translation + data-wst-page so the rescan never
- * touches it and stop()-style cleanup finds it; textContent only (no innerHTML; Trusted Types safe).
+ * Floating translation tooltips for UI text (menus, buttons): shown ONLY while the pointer is over (or the keyboard
+ * focus is on) the element. Translations live in ONE of our own layers appended to document.documentElement, so
+ * nothing is ever inserted into the page's layout. The only things attached to page elements are
+ * mouseenter/mouseleave/focus/blur listeners, all removed on removeLabel/destroy. Every label carries
+ * data-wst-translation + data-wst-page so the rescan never touches it and stop()-style cleanup finds it;
+ * textContent only (no innerHTML; Trusted Types safe).
  */
 
 export interface Rect {
@@ -27,7 +28,7 @@ const mkRect = (x: number, y: number, w: number, h: number): Rect => ({
 /**
  * PURE spot picker. Candidates in order: right (vertically centered), bottom-left, top-left, left.
  * A candidate wins when it fits the viewport (2px margin), avoids every rect in `taken` and answers
- * yes to `isFree`; otherwise null (safety bias: no label beats a hidden label).
+ * yes to `isFree`; otherwise null.
  */
 export function chooseSpot(
   target: Rect,
@@ -63,10 +64,10 @@ export interface OverlayDeps {
 }
 
 export interface OverlayApi {
-  /** Create or update the floating label for `target`. */
+  /** Create or update the translation tooltip for `target` (hidden until the pointer is over it). */
   setLabel(target: HTMLElement, text: string): void;
   removeLabel(target: HTMLElement): void;
-  /** Re-place every label (rAF-throttled: at most one pass per frame). */
+  /** Re-place the tooltip that is showing right now (page scrolled or resized); hides it if the target is gone. */
   relayout(): void;
   destroy(): void;
   count(): number;
@@ -74,6 +75,7 @@ export interface OverlayApi {
 
 // Tags whose rendering hides the space behind them for our sampling probe
 const FILLED_TAGS = new Set(["IMG", "SVG", "VIDEO", "CANVAS", "IFRAME", "INPUT", "TEXTAREA", "SELECT", "OBJECT", "EMBED"]);
+const SWEEP_AT = 200; // purge labels of detached elements once this many have piled up
 
 const clamp = (v: number, lo: number, hi: number): number => Math.min(Math.max(v, lo), hi);
 
@@ -82,23 +84,17 @@ export function createOverlay(doc: Document, deps: OverlayDeps = {}): OverlayApi
   const raf = deps.rAF ?? ((cb: () => void) => win?.requestAnimationFrame(cb) ?? 0);
   const viewport = deps.viewport ?? (() => ({ w: win?.innerWidth ?? 0, h: win?.innerHeight ?? 0 }));
   const fromPoint = (x: number, y: number): Element | null =>
-    deps.elementFromPoint ? deps.elementFromPoint(x, y) : (doc.elementFromPoint ? doc.elementFromPoint(x, y) : null);
+    deps.elementFromPoint ? deps.elementFromPoint(x, y) : doc.elementFromPoint ? doc.elementFromPoint(x, y) : null;
 
-  let layer: HTMLDivElement | null = null;
   interface Entry {
     el: HTMLDivElement;
     show: () => void;
     hide: () => void;
-    /** Last good placement, relative to the target: scroll just moves it along instead of re-probing the page. */
-    spot?: { dx: number; dy: number; w: number; h: number; tw: number; th: number };
-    /** A full probe was already tried (and found nothing): skip it until the next settle/resize. */
-    tried?: boolean;
   }
+  let layer: HTMLDivElement | null = null;
   const labels = new Map<HTMLElement, Entry>();
+  let active: HTMLElement | null = null; // the target whose tooltip is showing
   let scheduled = false;
-  let needFull = false; // resize or scroll-settled: re-probe every label
-  let settleTimer: ReturnType<typeof setTimeout> | null = null;
-  const canHit = !!(deps.elementFromPoint || doc.elementFromPoint);
 
   const rectOf = (el: Element): Rect => {
     const r = el.getBoundingClientRect();
@@ -132,10 +128,11 @@ export function createOverlay(doc: Document, deps: OverlayDeps = {}): OverlayApi
   };
 
   /**
-   * DOM "is this rect empty" probe: a grid with a point about every 8px × 5px (corners and edges included), capped
-   * at 60 points. Our own labels have pointer-events:none, so elementFromPoint never reports them: the page decides.
+   * DOM "is this rect empty" probe: a grid with a point about every 8px × 5px (corners and edges included), capped at
+   * 60 points, over the label rect plus 3px of air. Our own labels have pointer-events:none, so elementFromPoint never
+   * reports them: the page decides. Only runs on hover, so cost is irrelevant.
    */
-  const PAD = 3; // keep a little air around the label: probe a slightly larger rect than the label itself
+  const PAD = 3;
   const isFreeDom = (label: Rect): boolean => {
     const rect = mkRect(label.left - PAD, label.top - PAD, label.width + 2 * PAD, label.height + 2 * PAD);
     const nx = clamp(Math.ceil(rect.width / 8), 2, 12);
@@ -156,101 +153,71 @@ export function createOverlay(doc: Document, deps: OverlayDeps = {}): OverlayApi
       layer = doc.createElement("div");
       layer.setAttribute("data-wst-overlay", "");
       doc.documentElement.appendChild(layer);
-      // relayout on scroll/resize; capture so inner scrollers (overflow containers) trigger us too
-      win?.addEventListener("scroll", onScroll, { capture: true, passive: true });
-      win?.addEventListener("resize", onResize);
+      // a shown tooltip follows its element when the page scrolls/resizes; capture so inner scrollers trigger us too
+      win?.addEventListener("scroll", schedule, { capture: true, passive: true });
+      win?.addEventListener("resize", schedule);
     }
     return layer;
   }
 
-  function removeLabel(target: HTMLElement): void {
-    const lab = labels.get(target);
-    if (!lab) return;
+  function detach(target: HTMLElement, lab: Entry): void {
     target.removeEventListener("mouseenter", lab.show);
     target.removeEventListener("mouseleave", lab.hide);
     target.removeEventListener("focus", lab.show);
     target.removeEventListener("blur", lab.hide);
     lab.el.remove();
     labels.delete(target);
+    if (active === target) active = null;
   }
 
-  // Visible = on screen AND actually painted at its centre: an element clipped by a scroller or covered by a dialog
-  // is not the one under that point, so it gets no label (labels never float over the wrong thing).
-  function visible(target: HTMLElement, r: Rect, vp: { w: number; h: number }): boolean {
+  function removeLabel(target: HTMLElement): void {
+    const lab = labels.get(target);
+    if (lab) detach(target, lab);
+  }
+
+  /** Put the tooltip next to its target: a free spot if there is one, else the first spot that fits, else clamped below. */
+  function place(target: HTMLElement, lab: Entry): boolean {
+    if (!target.isConnected) return false;
+    const vp = viewport();
+    const r = rectOf(target);
     if ((r.width === 0 && r.height === 0) || r.right <= 0 || r.bottom <= 0 || r.left >= vp.w || r.top >= vp.h) return false;
-    if (!canHit) return true;
-    const hit = fromPoint(clamp(r.left + r.width / 2, 0, vp.w - 1), clamp(r.top + r.height / 2, 0, vp.h - 1));
-    return !!hit && target.contains(hit);
+    const size = measure(lab.el);
+    const spot = chooseSpot(r, size, vp, isFree, []) ?? chooseSpot(r, size, vp, () => true, []);
+    const x = spot ? spot.x : clamp(r.left, 2, Math.max(2, vp.w - size.w - 2));
+    const y = spot ? spot.y : clamp(r.bottom + 2, 2, Math.max(2, vp.h - size.h - 2));
+    lab.el.style.left = `${x}px`;
+    lab.el.style.top = `${y}px`;
+    lab.el.style.display = "block";
+    return true;
+  }
+
+  function show(target: HTMLElement): void {
+    const lab = labels.get(target);
+    if (!lab) return;
+    if (active && active !== target) labels.get(active)?.hide();
+    if (place(target, lab)) active = target;
+    else lab.el.style.display = "none";
+  }
+
+  function hide(target: HTMLElement): void {
+    const lab = labels.get(target);
+    if (lab) lab.el.style.display = "none";
+    if (active === target) active = null;
   }
 
   function relayoutNow(): void {
     scheduled = false;
-    if (!layer) return;
-    const full = needFull;
-    needFull = false;
-    const vp = viewport();
-    const placed: Rect[] = [];
-    for (const [target, lab] of [...labels]) {
-      if (!target.isConnected) {
-        removeLabel(target); // element left the DOM: label goes with it
-        continue;
-      }
-      if (full) lab.tried = false;
-      const r = rectOf(target);
-      if (!visible(target, r, vp)) {
-        lab.el.style.display = "none";
-        lab.spot = undefined;
-        lab.tried = false; // probe again when it becomes visible
-        continue;
-      }
-      // cheap path: same target size and a known spot, so just carry the label along with it
-      if (!full && lab.spot && lab.spot.tw === r.width && lab.spot.th === r.height) {
-        const x = r.left + lab.spot.dx;
-        const y = r.top + lab.spot.dy;
-        const cr = mkRect(x, y, lab.spot.w, lab.spot.h);
-        if (cr.left >= 2 && cr.top >= 2 && cr.right <= vp.w - 2 && cr.bottom <= vp.h - 2) {
-          lab.el.style.display = "block";
-          lab.el.style.left = `${x}px`;
-          lab.el.style.top = `${y}px`;
-          placed.push(cr);
-          continue;
-        }
-      }
-      if (lab.tried && !lab.spot) {
-        lab.el.style.display = "none"; // nothing free earlier: stay hidden (tooltip mode) until the next settle
-        continue;
-      }
-      const size = measure(lab.el);
-      const spot = chooseSpot(r, size, vp, isFree, placed);
-      lab.tried = true;
-      if (spot) {
-        lab.spot = { dx: spot.x - r.left, dy: spot.y - r.top, w: size.w, h: size.h, tw: r.width, th: r.height };
-        lab.el.style.display = "block";
-        lab.el.style.left = `${spot.x}px`;
-        lab.el.style.top = `${spot.y}px`;
-        placed.push(mkRect(spot.x, spot.y, size.w, size.h));
-      } else {
-        // no free space: hide here and fall back to hover/focus tooltip mode
-        lab.spot = undefined;
-        lab.el.style.display = "none";
-      }
+    if (!active) return;
+    const lab = labels.get(active);
+    if (!lab) {
+      active = null;
+      return;
     }
-  }
-
-  // scroll: carry labels along every frame; once scrolling stops, re-probe the free space once
-  function onScroll(): void {
-    schedule();
-    if (settleTimer) clearTimeout(settleTimer);
-    settleTimer = setTimeout(() => {
-      settleTimer = null;
-      needFull = true;
-      schedule();
-    }, 150);
-  }
-
-  function onResize(): void {
-    needFull = true;
-    schedule();
+    if (!place(active, lab)) {
+      lab.el.style.display = "none"; // scrolled out of view or removed: no tooltip
+      if (!active.isConnected) removeLabel(active);
+      else active = null;
+    }
   }
 
   function schedule(): void {
@@ -259,15 +226,20 @@ export function createOverlay(doc: Document, deps: OverlayDeps = {}): OverlayApi
     raf(() => relayoutNow());
   }
 
+  function sweep(): void {
+    for (const [target, lab] of [...labels]) if (!target.isConnected) detach(target, lab);
+  }
+
   function setLabel(target: HTMLElement, text: string): void {
     let lab = labels.get(target);
     if (!lab) {
+      if (labels.size >= SWEEP_AT) sweep();
       const el = doc.createElement("div");
       el.setAttribute("data-wst-translation", "true");
       el.setAttribute("data-wst-page", "true");
       el.setAttribute("data-wst-float", "");
       ensureLayer().appendChild(el);
-      const entry = { el, show: () => show(target), hide: () => hide(target) };
+      const entry: Entry = { el, show: () => show(target), hide: () => hide(target) };
       target.addEventListener("mouseenter", entry.show);
       target.addEventListener("mouseleave", entry.hide);
       target.addEventListener("focus", entry.show);
@@ -275,35 +247,10 @@ export function createOverlay(doc: Document, deps: OverlayDeps = {}): OverlayApi
       labels.set(target, entry);
       lab = entry;
     }
-    if (lab.el.textContent !== text) lab.el.textContent = text;
-    schedule();
-  }
-
-  // Tooltip mode: same spots, but no isFree/taken — the user asked for it. If everything is off-viewport,
-  // bottom-left clamped into the viewport.
-  function show(target: HTMLElement): void {
-    const lab = labels.get(target);
-    if (!lab || !layer) return;
-    const vp = viewport();
-    const r = rectOf(target);
-    const size = measure(lab.el);
-    const spot = chooseSpot(r, size, vp, () => true, []);
-    let x: number, y: number;
-    if (spot) {
-      x = spot.x;
-      y = spot.y;
-    } else {
-      x = clamp(r.left, 2, Math.max(2, vp.w - size.w - 2));
-      y = clamp(r.bottom + 2, 2, Math.max(2, vp.h - size.h - 2));
+    if (lab.el.textContent !== text) {
+      lab.el.textContent = text;
+      if (active === target) schedule(); // new text may need a different size/spot
     }
-    lab.el.style.left = `${x}px`;
-    lab.el.style.top = `${y}px`;
-    lab.el.style.display = "block";
-  }
-
-  function hide(target: HTMLElement): void {
-    const lab = labels.get(target);
-    if (lab) lab.el.style.display = "none";
   }
 
   return {
@@ -311,20 +258,12 @@ export function createOverlay(doc: Document, deps: OverlayDeps = {}): OverlayApi
     removeLabel,
     relayout: schedule,
     destroy(): void {
-      for (const [target, lab] of [...labels]) {
-        target.removeEventListener("mouseenter", lab.show);
-        target.removeEventListener("mouseleave", lab.hide);
-        target.removeEventListener("focus", lab.show);
-        target.removeEventListener("blur", lab.hide);
-        lab.el.remove();
-      }
-      labels.clear();
+      for (const [target, lab] of [...labels]) detach(target, lab);
+      active = null;
       layer?.remove();
       layer = null;
-      win?.removeEventListener("scroll", onScroll, { capture: true });
-      win?.removeEventListener("resize", onResize);
-      if (settleTimer) clearTimeout(settleTimer);
-      settleTimer = null;
+      win?.removeEventListener("scroll", schedule, { capture: true });
+      win?.removeEventListener("resize", schedule);
     },
     count: () => labels.size,
   };
