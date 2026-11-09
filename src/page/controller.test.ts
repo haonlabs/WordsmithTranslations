@@ -226,4 +226,77 @@ describe("createPageTranslator", () => {
     expect(io.entries.size).toBe(1);
     t.stop();
   });
+
+  describe("floating ui labels", () => {
+    const buttonBody = `<button id="btn">팔로우</button>`;
+
+    function fakeOverlay() {
+      return { setLabel: vi.fn(), removeLabel: vi.fn(), relayout: vi.fn(), destroy: vi.fn(), count: () => 0 };
+    }
+
+    function makeWithOverlay(ov: ReturnType<typeof fakeOverlay>, opts?: Partial<PageTranslatorDeps>) {
+      const calls: string[] = [];
+      const deps: PageTranslatorDeps = {
+        document,
+        status: () => Promise.resolve({ state: "available" }),
+        translate: (t) => {
+          calls.push(t);
+          return Promise.resolve(`T:${t}`);
+        },
+        debounceMs: 0,
+        IntersectionObserver: FakeIO as unknown as PageTranslatorDeps["IntersectionObserver"],
+        overlay: ov,
+        ...opts,
+      };
+      const t = createPageTranslator(deps);
+      t.start();
+      return { t, calls };
+    }
+
+    it("ui blocks translate through overlay.setLabel; nothing is inserted into the page", async () => {
+      document.body.innerHTML = buttonBody;
+      const ov = fakeOverlay();
+      const { t, calls } = makeWithOverlay(ov);
+      await settle();
+      expect(calls).toEqual(["팔로우"]);
+      expect(ov.setLabel).toHaveBeenCalledWith(document.getElementById("btn"), "T:팔로우");
+      expect(document.body.querySelector("[data-wst-translation]")).toBeNull(); // no in-flow node
+      expect(t.stats()).toEqual({ active: true, translated: 1 });
+      t.stop();
+      expect(ov.destroy).toHaveBeenCalledTimes(1);
+    });
+
+    it("uiLabels:false ignores ui blocks like the old behavior", async () => {
+      document.body.innerHTML = buttonBody;
+      const ov = fakeOverlay();
+      const { t, calls } = makeWithOverlay(ov, { uiLabels: false });
+      await settle();
+      expect(calls).toEqual([]);
+      expect(ov.setLabel).not.toHaveBeenCalled();
+      t.stop();
+    });
+
+    it("stats count content translations and ui labels together", async () => {
+      document.body.innerHTML = seed + `<button id="btn">팔로우</button>`;
+      const ov = fakeOverlay();
+      const { t } = makeWithOverlay(ov);
+      await settle();
+      expect(t.stats()).toEqual({ active: true, translated: 2 });
+      expect(ov.setLabel).toHaveBeenCalledTimes(1);
+      t.stop();
+    });
+
+    it("removed ui elements lose their label (and tracking) on the next flush", async () => {
+      document.body.innerHTML = buttonBody;
+      const ov = fakeOverlay();
+      const { t } = makeWithOverlay(ov);
+      await settle();
+      const btn = document.getElementById("btn")!;
+      btn.remove();
+      await settle();
+      expect(ov.removeLabel).toHaveBeenCalledWith(btn);
+      expect(t.stats().translated).toBe(0);
+      t.stop();
+    });
+  });
 });

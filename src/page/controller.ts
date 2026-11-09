@@ -7,6 +7,7 @@ import { chatIsDark, render, TRANSLATION_ATTR } from "../content/renderer";
 import type { ChatMessage } from "../content/types";
 import { blockLines, blockText, enclosingBlock, findBlocks, isForeign, type PageBlock } from "./blocks";
 import { clearLines, renderLines } from "./lines";
+import { createOverlay } from "./overlay";
 import { translateChunked } from "./chunk";
 
 const FLUSH_MS = 300;
@@ -26,6 +27,14 @@ type IOCtor = new (
   options?: { rootMargin?: string },
 ) => PageBlockObserver;
 
+export interface OverlayLike {
+  setLabel(target: HTMLElement, text: string): void;
+  removeLabel(target: HTMLElement): void;
+  relayout(): void;
+  destroy(): void;
+  count(): number;
+}
+
 export interface PageTranslatorDeps {
   translate: (text: string, lang: Lang) => Promise<string>;
   /** Translator availability, checked through the offscreen document (throttled via createReadiness). */
@@ -34,6 +43,10 @@ export interface PageTranslatorDeps {
   debounceMs?: number;
   IntersectionObserver?: IOCtor;
   MutationObserver?: new (callback: MutationCallback) => MutationObserver;
+  /** Floating-label layer for ui blocks (injection for tests); created when omitted. */
+  overlay?: OverlayLike;
+  /** false = ignore ui blocks like the old behavior. */
+  uiLabels?: boolean;
 }
 
 export interface PageStats {
@@ -43,6 +56,7 @@ export interface PageStats {
 
 interface Tracked {
   id: string; // ties line nodes (multi-line blocks) to this block
+  kind: "content" | "ui";
   text: () => string;
   placement: "inside" | "after";
   requested: string; // text we last enqueued for; "" = nothing yet
@@ -58,6 +72,8 @@ export function createPageTranslator(deps: PageTranslatorDeps) {
   const ready = createReadiness(deps.status);
   const queue = new TranslationQueue({ translate: (t, l) => translateChunked(t, l, deps.translate) });
   const tracked = new Map<HTMLElement, Tracked>();
+  const overlay = deps.overlay ?? createOverlay(doc);
+  const uiLabels = deps.uiLabels !== false;
   const IO = deps.IntersectionObserver ?? (globalThis as { IntersectionObserver?: IOCtor }).IntersectionObserver;
   const MO = deps.MutationObserver ?? globalThis.MutationObserver;
   const pending: Node[] = [];
@@ -89,6 +105,12 @@ export function createPageTranslator(deps: PageTranslatorDeps) {
         if (out === undefined) {
           // model not ready: restore the previous request so the block is retried on its next visibility event
           if (info.requested === text) info.requested = prev;
+          return;
+        }
+        // UI block: the translation floats next to the element in our own overlay layer, never in-flow.
+        if (info.kind === "ui") {
+          overlay.setLabel(el, out);
+          info.translated = true;
           return;
         }
         // Multi-line text (e.g. a timestamp list): translation directly under each line, not one block at the end.
@@ -129,9 +151,10 @@ export function createPageTranslator(deps: PageTranslatorDeps) {
 
   function track(blk: PageBlock): void {
     if (isForeign(blk.el)) return;
+    if (blk.kind === "ui" && !uiLabels) return;
     let info = tracked.get(blk.el);
     if (!info) {
-      info = { id: String(++seq), text: () => blockText(blk.el), placement: blk.placement, requested: "", translated: false };
+      info = { id: String(++seq), kind: blk.kind, text: () => blockText(blk.el), placement: blk.placement, requested: "", translated: false };
       tracked.set(blk.el, info);
       io?.observe(blk.el);
     }
@@ -159,11 +182,19 @@ export function createPageTranslator(deps: PageTranslatorDeps) {
       for (const n of r.addedNodes) if (!isEngineNode(n)) pending.push(n);
       if (r.type === "characterData" && !isEngineNode(r.target)) pending.push(r.target);
     }
-    if (pending.length) schedule();
+    // removals alone don't add scan work but must run the disconnected-ui cleanup (flush)
+    if (pending.length || records.some((r) => r.removedNodes.length && !isEngineNode(r.target))) schedule();
   }
 
   function flush(): void {
     flushTimer = null;
+    // ui elements removed from the DOM lose their label (and tracking)
+    for (const [el, info] of tracked) {
+      if (info.kind === "ui" && !el.isConnected) {
+        overlay.removeLabel(el);
+        tracked.delete(el);
+      }
+    }
     const blocks = new Set<HTMLElement>();
     for (const node of pending.splice(0)) {
       const el = node.nodeType === 1 && node instanceof Element ? node : node.parentElement;
@@ -216,6 +247,7 @@ export function createPageTranslator(deps: PageTranslatorDeps) {
       queue.clear();
       styleEl?.remove();
       styleEl = null;
+      overlay.destroy(); // removes the layer, every label and every listener (page elements untouched)
       doc.querySelectorAll("[data-wst-page]").forEach((n) => n.remove());
       tracked.clear();
     },

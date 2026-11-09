@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import chzzkFixture from "../../test/fixtures/chzzk-comments.html?raw";
+import chzzkUiFixture from "../../test/fixtures/chzzk-ui.html?raw";
 import { blockText, findBlocks, isForeign, type PageBlock } from "./blocks";
 
 let body: HTMLElement;
@@ -22,12 +23,15 @@ describe("findBlocks", () => {
   });
 
   it("inline children keep flowing into the parent block", () => {
-    // Short <a> text (< 12 chars) is now excluded from the block; long <a> text is included.
-    body.innerHTML = `<div id="b" style="display:block">바깥 <a href="#">링크</a> <span style="display:inline">인라인</span> 끝</div>`;
+    // Short <a> text (< 12 chars) becomes a floating ui block now; the rest of the block stays content.
+    body.innerHTML = `<div id="b" style="display:block">바깥 <a href="#" id="link">링크</a> <span style="display:inline">인라인</span> 끝</div>`;
     const blocks = scan();
-    expect(blocks.map((b) => b.el.id)).toEqual(["b"]);
-    // "링크" is 2 chars (< 12) so the short-anchor rule skips it; the rest of the block text remains.
-    expect(blocks[0]!.text).toBe("바깥  인라인 끝");
+    expect(blocks.filter((b) => b.kind === "content").map((b) => b.el.id)).toEqual(["b"]);
+    expect(blocks[0]!.text).toBe("바깥  인라인 끝"); // short-anchor text excluded from the content block
+    const ui = blocks.filter((b) => b.kind === "ui");
+    expect(ui).toHaveLength(1);
+    expect(ui[0]!.el).toBe(document.getElementById("link"));
+    expect(ui[0]!.text).toBe("링크");
   });
 
   it("nested blocks do not translate the same text twice", () => {
@@ -104,10 +108,10 @@ describe("findBlocks", () => {
 
     it("produces exactly 3 content blocks, one per comment body", () => {
       const blocks = scan();
-      expect(blocks).toHaveLength(3);
+      expect(blocks.filter((b) => b.kind === "content")).toHaveLength(3);
     });
 
-    it("does not produce blocks for nicknames, dates, or blind labels", () => {
+    it("nicknames and dates still produce no block anywhere", () => {
       const blocks = scan();
       const texts = blocks.map((b) => b.text.trim());
       // No nickname text
@@ -119,8 +123,15 @@ describe("findBlocks", () => {
       // No blind labels
       expect(texts.some((t) => t.includes("더보기"))).toBe(false);
       expect(texts.some((t) => t.includes("버프"))).toBe(false);
-      // No reply button
-      expect(texts.some((t) => t.includes("답글 쓰기"))).toBe(false);
+    });
+
+    it("reply buttons are now floating ui blocks (one per comment)", () => {
+      const blocks = scan().filter((b) => b.kind === "ui");
+      expect(blocks).toHaveLength(3);
+      for (const b of blocks) {
+        expect(b.el.tagName).toBe("BUTTON");
+        expect(b.text).toBe("답글 쓰기");
+      }
     });
 
     it("list block: text has 4 lines separated by \\n", () => {
@@ -176,21 +187,29 @@ describe("findBlocks", () => {
     });
   });
 
-  describe("UI interactive / landmark elements are skipped", () => {
-    it("skips text inside <nav>", () => {
+  describe("UI interactive / landmark elements", () => {
+    it("nav text is a floating ui label on the nav element", () => {
       body.innerHTML = `
         <nav><span>네비게이션</span></nav>
         <div id="b" style="display:block">본문 콘텐츠입니다</div>`;
       const blocks = scan();
-      expect(blocks.map((b) => b.el.id)).toEqual(["b"]);
+      expect(blocks.filter((b) => b.kind === "content").map((b) => b.el.id)).toEqual(["b"]);
+      const ui = blocks.filter((b) => b.kind === "ui");
+      expect(ui).toHaveLength(1);
+      expect(ui[0]!.el.tagName).toBe("NAV");
+      expect(ui[0]!.text).toBe("네비게이션");
     });
 
-    it("skips text inside role='menu' elements", () => {
+    it("role='menu' items become floating ui labels", () => {
       body.innerHTML = `
         <ul role="menu"><li role="menuitem">메뉴 항목</li></ul>
         <div id="b" style="display:block">본문 콘텐츠입니다</div>`;
       const blocks = scan();
-      expect(blocks.map((b) => b.el.id)).toEqual(["b"]);
+      expect(blocks.filter((b) => b.kind === "content").map((b) => b.el.id)).toEqual(["b"]);
+      const ui = blocks.filter((b) => b.kind === "ui");
+      expect(ui).toHaveLength(1);
+      expect(ui[0]!.el.getAttribute("role")).toBe("menuitem");
+      expect(ui[0]!.text).toBe("메뉴 항목");
     });
 
     it("skips button text but includes timestamp from button in parent block", () => {
@@ -202,27 +221,35 @@ describe("findBlocks", () => {
     });
   });
 
-  describe("short <a> link skipping", () => {
-    it("skips <a> with text shorter than 12 characters", () => {
-      body.innerHTML = `<div id="b" style="display:block">본문 <a href="#">짧은링크</a> 계속</div>`;
+  describe("short <a> links", () => {
+    it("short <a> text becomes a floating ui label, not content", () => {
+      body.innerHTML = `<div id="b" style="display:block">본문 <a href="#" id="l">짧은링크</a> 계속</div>`;
       const blocks = scan();
-      expect(blocks.map((b) => b.el.id)).toEqual(["b"]);
+      expect(blocks.filter((b) => b.kind === "content").map((b) => b.el.id)).toEqual(["b"]);
       expect(blocks[0]!.text).not.toContain("짧은링크");
+      const ui = blocks.filter((x) => x.kind === "ui");
+      expect(ui).toHaveLength(1);
+      expect(ui[0]!.el).toBe(document.getElementById("l"));
+      expect(ui[0]!.text).toBe("짧은링크");
     });
 
     it("includes <a> with text >= 12 characters", () => {
       body.innerHTML = `<div id="b" style="display:block">본문 <a href="#">이것은긴링크제목입니다요</a> 계속</div>`;
       const blocks = scan();
-      expect(blocks.map((b) => b.el.id)).toEqual(["b"]);
+      expect(blocks.filter((x) => x.kind === "content").map((x) => x.el.id)).toEqual(["b"]);
       expect(blocks[0]!.text).toContain("이것은긴링크제목입니다요");
+      expect(blocks).toHaveLength(1);
     });
   });
 
   describe("UI label heuristics", () => {
-    it("drops short bold text (font-weight:700, < 40 chars)", () => {
+    it("short bold text becomes a floating ui block (no in-flow translation)", () => {
       body.innerHTML = `<div id="b" style="display:block;font-weight:700">굵은제목</div>`;
       const blocks = scan();
-      expect(blocks.map((b) => b.el.id)).toEqual([]);
+      expect(blocks).toHaveLength(1);
+      expect(blocks[0]!.kind).toBe("ui");
+      expect(blocks[0]!.el.id).toBe("b");
+      expect(blocks[0]!.text).toBe("굵은제목");
     });
 
     it("does NOT drop short bold heading (H2)", () => {
@@ -250,14 +277,16 @@ describe("findBlocks", () => {
       expect(blocks.map((b) => b.el.id)).toEqual(["b"]);
     });
 
-    it("drops narrow-rect blocks (mocked width 60)", () => {
+    it("narrow-rect blocks become floating ui blocks (mocked width 60)", () => {
       body.innerHTML = `<div id="n" style="display:block">좁은 열의 텍스트입니다</div>`;
       const el = document.getElementById("n")!;
       vi.spyOn(el, "getBoundingClientRect").mockReturnValue({
         width: 60, height: 20, top: 0, left: 0, right: 60, bottom: 20, x: 0, y: 0, toJSON: () => {},
       });
       const blocks = scan();
-      expect(blocks.map((b) => b.el.id)).toEqual([]);
+      expect(blocks).toHaveLength(1);
+      expect(blocks[0]!.kind).toBe("ui");
+      expect(blocks[0]!.el.id).toBe("n");
       vi.restoreAllMocks();
     });
 
@@ -277,6 +306,36 @@ describe("findBlocks", () => {
       const blocks = scan();
       expect(blocks).toHaveLength(1);
       expect(blocks[0]!.text).toBe("첫 번째\n두 번째\n세 번째");
+    });
+  });
+
+  describe("CHZZK UI fixture (sidebar menu + channel header)", () => {
+    beforeEach(() => {
+      body.innerHTML = chzzkUiFixture;
+    });
+
+    it("the five menu items are floating ui blocks on their <a> elements", () => {
+      const menu = scan().filter((b) => b.kind === "ui" && b.el.tagName === "A");
+      expect(menu.map((b) => b.text)).toEqual(["전체 방송", "인기 클립", "카테고리", "편성표", "팔로잉"]);
+    });
+
+    it("the three channel buttons are floating ui blocks", () => {
+      const buttons = scan().filter((b) => b.kind === "ui" && b.el.tagName === "BUTTON");
+      expect(buttons.map((b) => b.text)).toEqual(["팔로우", "구독", "구독 선물"]);
+    });
+
+    it("channel names, follower counts and sr-only labels produce no block", () => {
+      const texts = scan().map((b) => b.text);
+      expect(texts.some((t) => t.includes("토키노 메리"))).toBe(false);
+      expect(texts.some((t) => t.includes("팔로워"))).toBe(false);
+      expect(texts.some((t) => t.includes("더보기"))).toBe(false);
+      expect(texts.some((t) => t.includes("New"))).toBe(false);
+    });
+
+    it("the cheese banner stays a content block (inline translation allowed)", () => {
+      const banner = scan().find((b) => b.text.includes("수확"));
+      expect(banner).toBeDefined();
+      expect(banner!.kind).toBe("content");
     });
   });
 });

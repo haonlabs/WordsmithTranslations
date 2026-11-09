@@ -3,6 +3,8 @@ import { TRANSLATION_ATTR } from "../content/renderer";
 import { CHAT_CONTAINER_ATTR } from "../content/types";
 
 export interface PageBlock {
+  /** content: translated inline under the text. ui: shown as a floating label next to `el` (never in-flow). */
+  kind: "content" | "ui";
   el: HTMLElement;
   /** Concatenated text-node data belonging to this block, in document order. BR elements become "\n". */
   text: string;
@@ -26,8 +28,8 @@ const INLINE_DISPLAY = new Set(["inline", "contents"]);
 // A new sibling of this block's element would become a flex/grid/table item and break the layout
 const INSERT_BREAKS = new Set(["flex", "inline-flex", "grid", "inline-grid", "table-row", "table", "table-row-group"]);
 
-// Tags that are UI interactive/landmark – text inside is UI, not content
-const INTERACTIVE_TAGS = new Set(["BUTTON", "SUMMARY", "LABEL", "SELECT", "OPTION", "NAV"]);
+// Tags that are UI interactive/landmark – text inside becomes a floating label, not content
+const INTERACTIVE_TAGS = new Set(["BUTTON", "SUMMARY", "LABEL", "NAV"]);
 // ARIA roles that mark UI interactive/landmark elements
 const INTERACTIVE_ROLES = new Set([
   "button", "tab", "menuitem", "menuitemcheckbox", "menuitemradio",
@@ -38,13 +40,15 @@ const INTERACTIVE_ROLES = new Set([
 // Class token keywords for sr-only / visually-hidden detection
 const SR_ONLY_TOKENS = new Set(["blind", "sr-only", "visually-hidden", "screen-reader", "screenreader", "a11y-hidden", "offscreen"]);
 
-// Class token keywords for UI label heuristics (applied to owner or parent)
-const UI_LABEL_TOKENS = new Set([
+// Class token keywords for things that are NOT UI to translate (people, dates, counts) — short text on
+// an element with one of these tokens is skipped entirely
+const SKIP_LABEL_TOKENS = new Set([
   "name", "nick", "nickname", "username", "user", "author", "profile", "avatar",
-  "date", "time", "timestamp", "badge", "chip", "tag", "label",
-  "btn", "button", "menu", "nav", "tab", "breadcrumb",
-  "count", "counter", "status",
+  "date", "time", "timestamp", "count", "counter",
 ]);
+
+// Class token keywords for UI label heuristics (applied to owner or parent)
+const UI_TOKENS = new Set(["btn", "button", "menu", "nav", "tab", "breadcrumb", "label", "tag", "chip", "status", "badge"]);
 
 // Timestamp pattern: matches HH:MM or HH:MM:SS (video timestamp links inside interactive elements)
 const TIMESTAMP_RE = /^\d{1,2}:\d{2}(:\d{2})?$/;
@@ -124,18 +128,14 @@ function koJaCount(text: string): number {
 }
 
 /**
- * Returns true if the block should be dropped by short-label heuristics:
- * (a) < 40 chars AND font-weight >= 600 AND owner not H1-H6
+ * Returns true if the block should become a floating `ui` label instead of inline content:
+ * (a) < 40 chars AND font-weight >= 600 AND not H1-H6
  * (b) < 40 chars AND UI label class token on owner or parent
- * (c) < 2 ko/ja chars
  * (d) rect width > 0 AND < 100 (narrow column; in jsdom width is 0 so this won't fire)
  */
-function isUILabel(el: HTMLElement, trimmed: string, cs: CSSStyleDeclaration): boolean {
+function isUiCandidate(el: HTMLElement, trimmed: string, cs: CSSStyleDeclaration): boolean {
   const len = trimmed.length;
   const isHeading = /^H[1-6]$/.test(el.tagName);
-
-  // (c) fewer than 2 ko/ja characters
-  if (koJaCount(trimmed) < 2) return true;
 
   if (len < 40) {
     // (a) bold non-heading
@@ -150,14 +150,37 @@ function isUILabel(el: HTMLElement, trimmed: string, cs: CSSStyleDeclaration): b
     const parentEl = el.parentElement;
     const ownerTokens = classTokens(el.className);
     const parentTokens = parentEl instanceof HTMLElement ? classTokens(parentEl.className) : [];
-    const allTokens = [...ownerTokens, ...parentTokens];
-    if (allTokens.some((t) => UI_LABEL_TOKENS.has(t))) return true;
+    if ([...ownerTokens, ...parentTokens].some((t) => UI_TOKENS.has(t))) return true;
   }
 
   // (d) narrow rect (not active in jsdom since getBoundingClientRect always returns 0x0)
   const rect = el.getBoundingClientRect();
   if (rect.width > 0 && rect.width < 100) return true;
 
+  return false;
+}
+
+/** Short text (< 40 chars) on owner/parent carrying a name/date/count token is skipped entirely. */
+function hasSkipLabelToken(el: HTMLElement, trimmed: string): boolean {
+  if (trimmed.length >= 40) return false;
+  const parent = el.parentElement;
+  const tokens = [...classTokens(el.className), ...(parent instanceof HTMLElement ? classTokens(parent.className) : [])];
+  return tokens.some((t) => SKIP_LABEL_TOKENS.has(t));
+}
+
+/** True for elements whose text should surface as a floating label (interactive/landmark or a short anchor). */
+function isUiLabelEl(el: HTMLElement): boolean {
+  if (el.tagName === "A") return ((el.textContent ?? "").trim().length < 12);
+  return el.tagName === "BUTTON" || el.tagName === "SUMMARY" || el.tagName === "LABEL" || el.tagName === "NAV"
+    || (!!el.getAttribute("role") && INTERACTIVE_ROLES.has(el.getAttribute("role")!));
+}
+
+/** True when any element from `t` up to (and including) `stop` carries a name/date/count class token. */
+function chainHasSkipToken(t: Text, stop: HTMLElement): boolean {
+  for (let a: Element | null = t.parentElement; a; a = a.parentElement) {
+    if (a instanceof HTMLElement && classTokens(a.className).some((tok) => SKIP_LABEL_TOKENS.has(tok))) return true;
+    if (a === stop) break;
+  }
   return false;
 }
 
@@ -174,16 +197,19 @@ interface WalkStyle {
  * Result of classifying a text node:
  * - "skip": exclude entirely
  * - "normal": include in owning block's text nodes  
+ * - "ui": the node sits in interactive UI (or a short anchor); it becomes a floating label on `uiEl`.
+ *   `owner` is the chain end used for class-token skip checks (may be null when the boundary cut the walk).
  * - "timestamp": a video timestamp inside an interactive element; include as text in the nearest outer block
  */
 type TextClassification =
   | { kind: "skip" }
   | { kind: "normal"; owner: HTMLElement }
+  | { kind: "ui"; uiEl: HTMLElement; owner: HTMLElement | null }
   | { kind: "timestamp"; outerOwner: HTMLElement; timestampText: string };
 
 /**
  * Classify a single text node relative to `boundary`.
- * Returns whether to skip it, include it normally, or treat it as a timestamp.
+ * Returns whether to skip it, include it normally, tag it as UI, or treat it as a timestamp.
  */
 function classifyText(
   t: Text,
@@ -200,7 +226,7 @@ function classifyText(
     const s = style(a);
 
     // Check for skip conditions
-    if (SKIP_TAGS.has(a.tagName) || SKIP_ATTRS.some((k) => a.hasAttribute(k)) || s.hidden) {
+    if (SKIP_TAGS.has(a.tagName) || a.tagName === "OPTION" || SKIP_ATTRS.some((k) => a.hasAttribute(k)) || s.hidden) {
       return { kind: "skip" };
     }
     // Check visually hidden (sr-only)
@@ -224,16 +250,20 @@ function classifyText(
     if (a === boundary) break;
   }
 
-  if (!owner) return { kind: "skip" };
+  // Nothing non-inline above the node: without interactive/anchor context there is nothing to work with,
+  // otherwise the interactive/anchor element itself owns the node's text
+  if (!owner) {
+    if (!nearestInteractive && !nearestAnchor) return { kind: "skip" };
+  }
 
   // Also check owner itself for interactive/anchor
-  if (!nearestInteractive && isInteractiveEl(owner)) nearestInteractive = owner;
-  if (!nearestAnchor && owner.tagName === "A") nearestAnchor = owner;
+  if (!nearestInteractive && owner && isInteractiveEl(owner)) nearestInteractive = owner;
+  if (!nearestAnchor && owner && owner.tagName === "A") nearestAnchor = owner;
 
-  // Check short <a> link: skip if anchor text < 12 chars
+  // Check short <a> link: text < 12 chars becomes a floating UI label (href or not, like the CHZZK menus)
   if (nearestAnchor && !nearestInteractive) {
     const anchorText = nearestAnchor.textContent?.trim() ?? "";
-    if (anchorText.length < 12) return { kind: "skip" };
+    if (anchorText.length < 12) return { kind: "ui", uiEl: nearestAnchor, owner };
     // Long anchor: include normally
   }
 
@@ -262,10 +292,11 @@ function classifyText(
         return { kind: "timestamp", outerOwner, timestampText: interactiveText };
       }
     }
-    // Regular interactive UI: skip
-    return { kind: "skip" };
+    // Regular interactive UI: floating label
+    return { kind: "ui", uiEl: nearestInteractive, owner };
   }
 
+  if (!owner) return { kind: "skip" };
   return { kind: "normal", owner };
 }
 
@@ -327,8 +358,9 @@ export function findBlocks(root: ParentNode): PageBlock[] {
     return c;
   };
 
-  // Map from block owner element to its owned text nodes (ordered)
-  const groups = new Map<HTMLElement, Text[]>();
+  // Map from block owner element to its owned text nodes (ordered); `ui` marks elements whose text belongs
+  // to a floating label rather than inline content
+  const groups = new Map<HTMLElement, { nodes: Text[]; ui: boolean }>();
 
   const doc = (root instanceof Document ? root : (root as Element).ownerDocument)!;
   const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -339,27 +371,42 @@ export function findBlocks(root: ParentNode): PageBlock[] {
 
     if (cls.kind === "skip") continue;
 
+    if (cls.kind === "ui") {
+      // Names, dates and counts on interactive elements are not UI labels
+      if (chainHasSkipToken(t, cls.owner ?? cls.uiEl)) continue;
+      const g = groups.get(cls.uiEl);
+      if (g) g.nodes.push(t);
+      else groups.set(cls.uiEl, { nodes: [t], ui: true });
+      continue;
+    }
+
     // A video-time button ("0:02:46") belongs to the block around it, IN PLACE, so it stays on its own line.
     const owner = cls.kind === "timestamp" ? cls.outerOwner : cls.owner;
-    const nodes = groups.get(owner);
-    if (nodes) nodes.push(t);
-    else groups.set(owner, [t]);
+    const g = groups.get(owner);
+    if (g) g.nodes.push(t);
+    else groups.set(owner, { nodes: [t], ui: false });
   }
 
   const blocks: PageBlock[] = [];
 
-  for (const [el, nodes] of groups) {
-    const text = buildBlockText(el, new Set(nodes));
-    const trimmed = text.trim();
+  for (const [el, g] of groups) {
+    const text = buildBlockText(el, new Set(g.nodes));
+    // UI text is the visible text of the whole element, whitespace-normalized ("구독 선물", never "…\n…")
+    const norm = g.ui || isUiLabelEl(el);
+    const value = norm ? text.replace(/\s+/g, " ").trim() : text;
+    const trimmed = value.trim();
 
     if (!detectLanguage(trimmed) || HANDLE_ONLY.test(trimmed)) continue;
-
+    if (koJaCount(trimmed) < 2) continue; // fewer than 2 ko/ja chars: skipped entirely
+    let kind: PageBlock["kind"] = g.ui ? "ui" : "content";
+    if (kind === "ui" && trimmed.length > 60) continue; // too long to float as a label
+    if (hasSkipLabelToken(el, trimmed)) continue;
     const cs = getCS(el);
-    if (isUILabel(el, trimmed, cs)) continue;
+    if (kind === "content" && isUiCandidate(el, trimmed, cs)) kind = "ui";
 
     const parent = el.parentElement;
     const parentDisplay = parent instanceof HTMLElement ? style(parent).display : "";
-    blocks.push({ el, text, nodes, placement: INSERT_BREAKS.has(parentDisplay) ? "inside" : "after" });
+    blocks.push({ kind, el, text: value, nodes: g.nodes, placement: INSERT_BREAKS.has(parentDisplay) ? "inside" : "after" });
   }
 
   return blocks;
@@ -392,6 +439,10 @@ function ownNodesOf(el: HTMLElement): Set<Text> {
     const t = n as Text;
     const cls = classifyText(t, el, style, getCS);
     if (cls.kind === "skip") continue;
+    if (cls.kind === "ui") {
+      if (cls.uiEl === el && !chainHasSkipToken(t, cls.owner ?? cls.uiEl)) own.add(t);
+      continue;
+    }
     if ((cls.kind === "timestamp" ? cls.outerOwner : cls.owner) === el) own.add(t);
   }
   return own;
@@ -399,11 +450,13 @@ function ownNodesOf(el: HTMLElement): Set<Text> {
 
 /**
  * Current text of `el`'s own block, re-read on demand (definition must stay in sync with findBlocks).
- * BR elements belonging to this block are represented as "\n".
+ * BR elements belonging to this block are represented as "\n". UI-block elements get whitespace-normalized
+ * text, matching what findBlocks stored.
  */
 export function blockText(el: HTMLElement): string {
   if (isForeign(el)) return "";
-  return buildBlockText(el, ownNodesOf(el));
+  const text = buildBlockText(el, ownNodesOf(el));
+  return isUiLabelEl(el) ? text.replace(/\s+/g, " ").trim() : text;
 }
 
 export interface BlockLine {
