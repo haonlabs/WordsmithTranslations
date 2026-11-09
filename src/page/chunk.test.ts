@@ -52,4 +52,18 @@ describe("translateChunked", () => {
     expect(order).toEqual(chunkText(text));
     expect(out).toBe(order.map((t) => `EN(${t.trimEnd().slice(-1)})`).join(""));
   });
+
+  it("multiline text: translates only ko/ja lines, skips blank and non-ko/ja lines", async () => {
+    // "가나다" → ko (translated), "abc" → no ko/ja (passthrough), "" → blank (preserved), "라마바" → ko (translated)
+    const calls: string[] = [];
+    const translate = vi.fn().mockImplementation((t: string) => {
+      calls.push(t);
+      return Promise.resolve(`<t:${t}>`);
+    });
+    const result = await translateChunked("가나다\nabc\n\n라마바", "ko", translate);
+    // translate called only for lines 1 and 4 (ko/ja)
+    expect(calls).toEqual(["가나다", "라마바"]);
+    // blank line and "abc" preserved; ko lines translated
+    expect(result).toBe("<t:가나다>\nabc\n\n<t:라마바>");
+  });
 });

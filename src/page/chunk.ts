@@ -1,3 +1,4 @@
+import { detectLanguage } from "../content/language";
 import type { Lang } from "../shared/translator";
 
 const MAX = 1000; //Translator API input limit
@@ -32,6 +33,32 @@ export async function translateChunked(
   lang: Lang,
   translate: (t: string, l: Lang) => Promise<string>,
 ): Promise<string> {
+  // If text has newlines, translate per-line
+  if (text.includes("\n")) {
+    const lines = text.split("\n");
+    const results: string[] = [];
+    for (const line of lines) {
+      if (line === "") {
+        // Preserve blank lines as-is
+        results.push("");
+      } else if (detectLanguage(line) === null) {
+        // No ko/ja on this line: return as-is without calling translate
+        results.push(line);
+      } else {
+        // Translate this line, using chunk splitting if needed
+        const parts = chunkText(line);
+        if (parts.length === 1) {
+          results.push(await translate(line, lang));
+        } else {
+          const out: string[] = [];
+          for (const part of parts) out.push(await translate(part, lang));
+          results.push(out.join(""));
+        }
+      }
+    }
+    return results.join("\n");
+  }
+
   const parts = chunkText(text);
   if (parts.length === 1) return translate(text, lang);
   const out: string[] = [];
