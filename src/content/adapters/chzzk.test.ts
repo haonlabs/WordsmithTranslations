@@ -26,7 +26,9 @@ describe("chzzk adapter", () => {
   it("initial scan emits message text only (no nickname) with the message div as host", () => {
     const a = createChzzkAdapter(document);
     a.start(collect);
+    expect(document.querySelector("[role=log]")!.hasAttribute("data-wst-chat-container")).toBe(true); // page skips chat
     a.stop();
+    expect(document.querySelector("[role=log]")!.hasAttribute("data-wst-chat-container")).toBe(false); // cleared on stop
     expect(got.map((m) => m.sourceText)).toEqual(["근데 바람핌", "라칸 터지는거 봐라 lol", "hello everyone"]);
     expect(got[0]!.sourceText).not.toContain("바이킹");
     expect(got[0]!.host.className).toContain("_chatting_message_");
@@ -71,6 +73,7 @@ describe("chzzk adapter", () => {
     document.body.innerHTML = fixture.replace("근데 바람핌", "다른 방 메시지");
     await vi.advanceTimersByTimeAsync(1100);
     expect(got.map((m) => m.sourceText)).toContain("다른 방 메시지");
+    expect(document.querySelector("[role=log]")!.hasAttribute("data-wst-chat-container")).toBe(true); // re-marked
     a.stop();
     vi.useRealTimers();
   });
@@ -80,6 +83,7 @@ describe("chzzk adapter", () => {
     a.start(collect);
     a.start(collect);
     a.stop();
+    expect(document.querySelector("[role=log]")!.hasAttribute("data-wst-chat-container")).toBe(false); // cleared on stop
     a.stop();
     got.length = 0;
     addMessage("중지 후");

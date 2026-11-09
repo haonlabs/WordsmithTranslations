@@ -6,6 +6,7 @@ const entries = {
   content: "src/content/entry.ts",
   background: "src/background/index.ts",
   offscreen: "src/offscreen/index.ts",
+  page: "src/page/entry.ts",
 } as const;
 
 export default defineConfig(({ mode }) => {

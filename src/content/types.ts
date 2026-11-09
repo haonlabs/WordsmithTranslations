@@ -1,3 +1,6 @@
+/** Marks an element as engine-owned so other engines' scanners skip it. Set on chat containers by the adapters. */
+export const CHAT_CONTAINER_ATTR = "data-wst-chat-container";
+
 export interface ChatMessage {
   id: string;
   /** Text exactly as read from `sourceElement` (used for the stale-result guard). */
@@ -6,7 +9,11 @@ export interface ChatMessage {
   sourceElement: HTMLElement;
   /** Platform-owned element the translation node is appended to (shown below the text). */
   host: HTMLElement;
-  platform: "youtube" | "chzzk";
+  platform: "youtube" | "chzzk" | "page";
+  /** Where the translation goes: inside `host` (chat, default) or as host's next sibling (page blocks). */
+  placement?: "inside" | "after";
+  /** Latest source text for the stale-result guard; defaults to `sourceElement.textContent`. */
+  readText?: () => string;
 }
 
 export interface PlatformAdapter {
