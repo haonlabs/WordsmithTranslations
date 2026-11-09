@@ -13,6 +13,7 @@
 3. Menampilkan hasil terjemahan tepat di bawah pesan sumber.
 4. Mempertahankan tampilan dan interaksi pesan asli.
 5. Berjalan tanpa backend dan tanpa API key eksternal.
+6. Menerjemahkan teks Korea dan Jepang di halaman web mana pun ke Inggris atas permintaan pengguna (tombol "Translate this page" di popup), dengan mesin dan model bahasa yang sama seperti chat live.
 
 ## 3. Target platforms
 
@@ -78,6 +79,11 @@ MVP minimum:
 - FR-12: Pengaturan enable/disable disimpan melalui `chrome.storage.local`.
 - FR-13: API/model availability diperiksa sebelum memproses antrean.
 - FR-14: Tidak ada request translation ke backend atau layanan eksternal pada MVP.
+- FR-15: Popup menyediakan tombol "Translate this page" yang menyuntikkan script `page.js` ke tab aktif via `chrome.scripting.executeScript`, dengan izin `activeTab` + `scripting` (tanpa `<all_urls>` atau host permission luas). Akses hanya untuk tab yang diklik dan berakhir saat tab berpindah halaman atau ditutup.
+- FR-16: Terjemahan halaman ditampilkan di bawah teks asli (teks asli tidak diubah), hanya untuk blok yang terlihat di viewport (+ margin 300px), dan mengikuti konten baru: komentar yang baru dimuat, "Read more" yang membuka teks lebih panjang, dan perubahan SPA di halaman yang sama.
+- FR-17: Tombol "Stop translating" menghapus semua terjemahan dan menghentikan pengamatan. Navigasi dokumen penuh ke halaman baru menghentikan fitur; pengguna menekan tombol lagi di halaman baru.
+- FR-18: Model bahasa sama dengan chat (`ko → en`, `ja → en`) dan harus sudah di-Enable di popup. Container chat yang sudah diterjemahkan adapter chat ditandai `data-wst-chat-container` dan tidak diterjemahkan dua kali.
+- FR-19: Teks lebih dari 1000 karakter dipecah per kalimat sebelum diterjemahkan. Halaman yang diblokir Chrome (`chrome://`, Chrome Web Store) dan iframe lintas-origin di luar cakupan `activeTab` dilaporkan tidak didukung, bukan diam-diam gagal.
 
 ## 7. Non-functional requirements
 
@@ -92,7 +98,7 @@ MVP minimum:
 
 ## 8. Out of scope
 
-- Menerjemahkan audio, subtitle, judul, deskripsi, atau video.
+- Menerjemahkan audio, subtitle, atau video. (Teks halaman termasuk judul dan deskripsi kini diterjemahkan lewat fitur "Translate this page".)
 - Terjemahan dua arah.
 - Terjemahan ke Indonesia.
 - Bahasa sumber lain selain Korean dan Japanese.
@@ -114,3 +120,9 @@ MVP dianggap selesai jika:
 9. Chat tetap bisa discroll dan digunakan.
 10. Jika API/model tidak tersedia atau gagal, pesan asli tetap utuh dan UI memberi indikasi kegagalan.
 11. Tidak ada backend, API key, atau request ke translation service eksternal.
+
+Untuk fitur "Translate this page":
+12. Menekan "Translate this page" pada halaman dengan teks Korea/Jepang menampilkan terjemahan Inggris di bawah teks asli, untuk blok yang terlihat di viewport.
+13. Scroll atau muat konten baru (komentar, "Read more", perubahan SPA) menerjemahkan blok baru yang terlihat; teks asli tetap utuh.
+14. "Stop translating" menghapus semua terjemahan dan menghentikan penerjemahan; navigasi ke halaman baru juga menghentikan fitur.
+15. Chat live yang sudah diterjemahkan adapter chat tidak mendapat terjemahan kedua (penanda `data-wst-chat-container`).
