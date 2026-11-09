@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "WordsmithTranslations",
+  "version": "0.1.0",
+  "description": "Translates Korean live chat messages to English inline on YouTube and CHZZK using Chrome's built-in Translator API.",
+  "minimum_chrome_version": "138",
+  "permissions": ["storage"],
+  "action": { "default_popup": "index.html", "default_title": "WordsmithTranslations" },
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "all_frames": true,
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://chzzk.naver.com/*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

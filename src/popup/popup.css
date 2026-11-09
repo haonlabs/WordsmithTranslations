@@ -1,0 +1,10 @@
+body { margin: 0; width: 300px; font: 13px/1.4 system-ui, sans-serif; color: #1a1a1a; }
+main { padding: 14px; }
+h1 { margin: 0; font-size: 15px; }
+.sub { margin: 2px 0 12px; color: #666; }
+.row { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
+.status { margin: 10px 0; padding: 8px; border-radius: 6px; background: #f1f1f1; }
+.status small { display: block; margin-top: 4px; color: #666; word-break: break-word; }
+.status.available { background: #e3f6e8; }
+.status.error, .status.unavailable, .status.unsupported { background: #fde8e8; }
+button { padding: 4px 10px; cursor: pointer; }
