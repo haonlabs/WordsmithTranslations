@@ -1,6 +1,6 @@
 # WordsmithTranslations
 
-Chrome Extension untuk menerjemahkan pesan chat live Korea → Inggris pada YouTube Live Chat dan CHZZK. MVP menggunakan Chrome Built-in AI Translator API (client-side) sehingga tidak memerlukan backend atau Google Cloud API key.
+Chrome Extension untuk menerjemahkan pesan chat live Korea dan Jepang → Inggris pada YouTube Live Chat dan CHZZK. MVP menggunakan Chrome Built-in AI Translator API (client-side) sehingga tidak memerlukan backend atau Google Cloud API key.
 
 ## Product decisions
 
@@ -8,9 +8,10 @@ Chrome Extension untuk menerjemahkan pesan chat live Korea → Inggris pada YouT
 - Extension: Manifest V3.
 - UI: React + Vite + TypeScript.
 - Platforms: YouTube Live Chat dan CHZZK (`chzzk.naver.com`).
-- Source language: Korean (`ko`).
+- Source languages: Korean (`ko`) and Japanese (`ja`).
 - Target language: English (`en`).
-- Mode: otomatis untuk semua pesan yang mengandung Hangul.
+- Mode: otomatis untuk semua pesan yang mengandung Hangul atau kana. Deteksi per pesan hanya lewat script: Hangul → `ko`, kana (hiragana/katakana) → `ja`; script yang lebih banyak menang pada pesan campuran.
+- Model download: Chrome hanya mengizinkan satu pengunduhan model per klik pengguna, jadi tiap bahasa disiapkan dengan klik "Enable" sendiri di popup. Korea tetap berfungsi walau Jepang belum disiapkan.
 - Rendering: pertahankan pesan asli; tambahkan terjemahan tepat di bawahnya.
 - Translation: `Translator` API dari Chrome Built-in AI.
 - No backend, no remote translation API, no API key.
@@ -40,7 +41,8 @@ Ini bukan Chrome page-translation feature dan bukan public API untuk memanggil t
 ## Non-goals for MVP
 
 - Audio/subtitle/video translation.
-- Translating English → Korean.
+- Translating English → Korean/Japanese.
 - Language auto-detection umum.
+- Bahasa sumber/target lain selain `ko`/`ja` → `en`.
 - Backend, database, accounts, analytics, or cloud sync.
 - Guarantee support for every YouTube/CHZZK layout or future DOM change.
