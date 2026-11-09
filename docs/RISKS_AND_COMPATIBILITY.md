@@ -67,7 +67,18 @@ Korean chat often contains slang, abbreviations, names, emotes, and mixed script
 
 Do not store chat text persistently. Do not send it to a custom server. Be transparent that the browser-managed Translator API may download/use local language models according to Chrome's implementation and policies.
 
-## 9. Official references
+## 9. `activeTab` injection for page translation
+
+The "Translate this page" feature injects `page.js` via `chrome.scripting.executeScript` with `activeTab` + `scripting` (no `<all_urls>`, no broad host permissions). This keeps the permission surface minimal, but has known limits:
+
+- **Cross-origin iframes are usually not covered by `activeTab`.** Text inside such iframes (e.g. some embedded comment widgets) is not translated.
+- **Access ends on navigation.** A full document navigation revokes the injection; the user presses the button again on the new page. SPA changes on the same page keep working.
+- **Chrome-blocked pages** (`chrome://`, Chrome Web Store) cannot be injected; the UI reports this instead of failing silently.
+- **Closed Shadow DOM** cannot be read, so text inside it is skipped.
+- **Performance on large pages.** The Translator API processes one request at a time, so very long pages translate progressively as the user scrolls (viewport tracking with a 300px margin + chunking for text over 1000 characters). Expect a delay before far-down content is translated, not a frozen page.
+- **Collisions with sites that re-render text.** A site rerendering its own text can duplicate or orphan translation nodes. The controller re-checks node identity and connectedness before rendering and dedupes by node identity + text; sites with aggressive rerenders may still need tolerance.
+
+## 10. Official references
 
 - Chrome for Developers — Translator API: https://developer.chrome.com/docs/ai/translator-api
 - Chrome Built-in AI guidance: https://developer.chrome.com/docs/ai/

@@ -36,6 +36,15 @@
 - Extension-owned node is ignored by observer.
 - Removed/recycled message node does not receive stale result.
 
+### Page translation (`src/page/`)
+- **blocks**: only text blocks with Hangul or kana are collected; extension-owned nodes, non-text elements, and containers marked `data-wst-chat-container` are skipped.
+- **blocks**: blocks outside the viewport (+ 300px margin) are not queued until they become visible.
+- **chunk**: text over 1000 characters is split per sentence; short text passes through unchanged; reassembly preserves order.
+- **controller**: translation renders below the original text; originals stay unchanged.
+- **controller**: a block already translated is not translated twice (dedupe by node identity + text).
+- **controller**: "Stop translating" removes all `data-wst-translation` nodes and disconnects observers.
+- **controller**: full document navigation stops the feature (no leaks into the next page).
+
 ## 2. Adapter tests
 
 Use representative HTML fixtures captured from current versions of each platform. Do not rely exclusively on hand-written selectors with no fixture validation. Korean and Japanese chats use the same adapters for each platform; adapters do not filter by language, the pipeline decides.
@@ -73,6 +82,10 @@ Use representative HTML fixtures captured from current versions of each platform
 12. Test fast chat burst and ensure queue stays bounded.
 13. Navigate between streams without full page reload.
 14. Verify no duplicate translation elements and no observer loops.
+15. Open a YouTube video page and press "Translate this page": visible Korean comments get a translation below them.
+16. Click "Read more" on a long Korean comment: the revealed text gets translated too.
+17. Open a Korean or Japanese news article, press "Translate this page", and scroll: newly visible blocks translate progressively; press "Stop translating" and verify all translations are removed.
+18. Press "Translate this page" on a Chrome-blocked page (`chrome://`, Chrome Web Store): the feature reports it cannot run there instead of failing silently.
 
 ## 4. Acceptance checklist
 
@@ -88,5 +101,6 @@ Use representative HTML fixtures captured from current versions of each platform
 - [ ] Messages without Hangul or kana are skipped (including Japanese kanji-only messages).
 - [ ] Queue/cache/deduplication tested.
 - [ ] SPA navigation tested.
+- [ ] Page translation: blocks/chunk/controller unit tests pass; manual scenarios (YouTube comments + "Read more", Korean/Japanese news page, blocked page) verified.
 - [ ] No backend or external translation API.
 - [ ] Known limitations documented.

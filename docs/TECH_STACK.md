@@ -56,7 +56,7 @@ If the selected Chrome TypeScript definitions do not include the Translator API,
 - Handle model download or user-facing unavailable states.
 - Re-check the current Chrome documentation for API status, origin/trial/flag requirements, supported language pairs, and extension content-script availability before coding.
 - Translation is isolated in an offscreen document (extension origin) and reached from content scripts via `chrome.runtime` messaging through the service worker (see ARCHITECTURE.md). Never a remote API.
-- Build: popup via `vite.config.ts`; content script, service worker and offscreen page each as a separate IIFE via `vite.scripts.config.ts --mode content|background|offscreen`.
+- Build: popup via `vite.config.ts`; content script, service worker and offscreen page each as a separate IIFE via `vite.scripts.config.ts --mode content|background|offscreen`. The page-translation script (`page.js`, injected by the popup via `chrome.scripting.executeScript`) is built as another separate IIFE via `--mode page`.
 
 ## Build commands (proposed)
 
