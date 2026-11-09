@@ -5,7 +5,7 @@ Chrome extension (Manifest V3) that translates Korean and Japanese live chat mes
 ## Requirements
 
 - Google Chrome **138+** on desktop (developed against 156). Translator API is not in Firefox/Safari/mobile.
-- The `ko → en` and `ja → en` language models are downloaded by Chrome on first use (needs network once, and a user click). Chrome only allows one model download per user click, so each language is prepared with its own **Enable** click in the popup. Korea keeps working even if Japanese hasn't been enabled yet.
+- The `ko → en` and `ja → en` language models are downloaded by Chrome on first use (needs network once, and a user click). Chrome only allows one model download per user click, so each language is prepared with its own **Enable** click in the popup. Korean keeps working even if Japanese hasn't been enabled yet.
 
 ## Install (unpacked)
 
@@ -31,22 +31,25 @@ Layout: `src/content/` (pipeline + `adapters/`), `src/background/` + `src/offscr
 
 ## Design
 
-Logo, popup states and in-page UI are designed in Figma ("Wordsmith - Translations"); icons in `public/icons/` are exports from it. The popup follows "Popup v2".
+Logo, popup states and in-page UI are designed in Figma ("Wordsmith - Translations"); icons in `public/icons/` are exports from it. The popup follows "Popup v3" (Korean + Japanese).
 
 ## Status (2026-11-09)
 
 | Area | State |
 |---|---|
-| Unit tests (hangul, LRU, queue, renderer, messaging, popup view, YouTube + CHZZK adapters on real DOM fixtures) | 48 passing |
+| Unit tests (language detection, LRU, queue, renderer, messaging, popup view, YouTube + CHZZK adapters on real DOM fixtures) | 64 passing |
 | YouTube adapter | Verified on a live Korean stream (YTN) in Ego Lite (Chromium 156): built content script run in a CDP isolated world translated real messages, no duplicates, originals intact |
 | CHZZK adapter | Verified on a live stream (logged in) the same way: 22 of 25 messages translated, no duplicates |
-| Popup UI | Rendered in Ego Lite with stubbed `chrome`/`Translator`; all states match the Figma design |
+| Japanese → English | Verified on a live Japanese YouTube stream (Nijisanji) in Ego Lite: built content script run in an isolated world with real `ja→en` and `ko→en` translators, correct per-language routing, no duplicates (e.g. 「アクションゲーは得意そうね」 → "You are good at action games") |
+| Popup UI | Rendered in Ego Lite with stubbed `chrome`/`Translator`; all states (two languages) match Figma "Popup v3" |
 | Translator API `ko→en` | Works in Chrome 156 (Ego Lite): top-level page, same-origin chat iframe, isolated world |
 | **Offscreen-document translation path** (service worker relay, popup Enable → offscreen `available`) | **Not tested.** Ego Lite cannot load unpacked extensions; needs a run in Google Chrome |
 
 ### Known limitations / open risks
 
 - **Untested in a real install:** the offscreen document + messaging path is new. Assumptions to confirm in Google Chrome: Translator is callable in an offscreen document; after the popup downloads the model, the offscreen document reports `available`; the Enable click survives long enough to finish the download.
+- **One model download per click** (observed: a second `create()` in the same gesture is rejected), so each language has its own Enable click. Korean keeps working while Japanese is not enabled.
+- Japanese messages that are kanji-only (e.g. "草") are skipped: indistinguishable from Chinese without kana.
 - **Popup must stay open during the first download** (a closed popup may cancel it). If that proves flaky, start the download from a persistent extension tab instead.
 - `offscreen` needs a documented reason; `DOM_PARSER` is the closest fit, which may matter for Chrome Web Store review (unpacked install is unaffected).
 - YouTube: only plain text messages. Paid/membership items and author badges were not in the captured DOM.
