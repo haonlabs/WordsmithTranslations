@@ -27,22 +27,22 @@ const SHORT: Record<Lang, string> = { ko: "Korean", ja: "Japanese" };
 function rows(statuses: Record<Lang, Status | null>, download: { lang: Lang; ratio: number } | null): LangRow[] {
   return LANGS.map((lang) => {
     if (download?.lang === lang)
-      return { lang, label: SHORT[lang], state: "downloading" as const, text: `${Math.round(download.ratio * 100)}%` };
+      return { lang, label: `${SHORT[lang]} → English`, state: "downloading" as const, text: `${Math.round(download.ratio * 100)}%` };
     const state = statuses[lang]?.state;
     switch (state) {
       case "available":
-        return { lang, label: SHORT[lang], state: "ready", text: "Ready" };
+        return { lang, label: `${SHORT[lang]} → English`, state: "ready", text: "Ready" };
       case "downloadable":
-        return { lang, label: SHORT[lang], state: "setup", text: "Not set up" };
+        return { lang, label: `${SHORT[lang]} → English`, state: "setup", text: "Not set up" };
       case "downloading":
-        return { lang, label: SHORT[lang], state: "downloading", text: "Downloading…" };
+        return { lang, label: `${SHORT[lang]} → English`, state: "downloading", text: "Downloading…" };
       case "error":
-        return { lang, label: SHORT[lang], state: "error", text: "Error" };
+        return { lang, label: `${SHORT[lang]} → English`, state: "error", text: "Error" };
       case null:
       case undefined:
-        return { lang, label: SHORT[lang], state: "checking", text: "…" };
+        return { lang, label: `${SHORT[lang]} → English`, state: "checking", text: "…" };
       default: // unsupported | unavailable
-        return { lang, label: SHORT[lang], state: "unavailable", text: "Unavailable" };
+        return { lang, label: `${SHORT[lang]} → English`, state: "unavailable", text: "Unavailable" };
     }
   });
 }

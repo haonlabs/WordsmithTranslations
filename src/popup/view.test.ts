@@ -18,7 +18,7 @@ it("local download in progress -> downloading headline with percent and disabled
   expect(v.progress).toBe(0.42);
   expect(v.cta).toEqual({ label: "Downloading…", lang: "ja", disabled: true, variant: "primary" });
   expect(v.check).toBe(false);
-  expect(v.languages[1]).toEqual({ lang: "ja", label: "Japanese", state: "downloading", text: "42%" });
+  expect(v.languages[1]).toEqual({ lang: "ja", label: "Japanese → English", state: "downloading", text: "42%" });
 });
 
 // rule 2
@@ -90,12 +90,12 @@ it("only unavailable -> unavailable headline with check", () => {
 it("languages rows map every state", () => {
   const v = toView(s(null, dl), true, null);
   expect(v.languages).toEqual([
-    { lang: "ko", label: "Korean", state: "checking", text: "…" },
-    { lang: "ja", label: "Japanese", state: "setup", text: "Not set up" },
+    { lang: "ko", label: "Korean → English", state: "checking", text: "…" },
+    { lang: "ja", label: "Japanese → English", state: "setup", text: "Not set up" },
   ]);
   expect(toView(s(av, na), true, null).languages).toEqual([
-    { lang: "ko", label: "Korean", state: "ready", text: "Ready" },
-    { lang: "ja", label: "Japanese", state: "unavailable", text: "Unavailable" },
+    { lang: "ko", label: "Korean → English", state: "ready", text: "Ready" },
+    { lang: "ja", label: "Japanese → English", state: "unavailable", text: "Unavailable" },
   ]);
   expect(toView(s(busy, bad), true, null).languages.map((r) => r.state)).toEqual(["downloading", "error"]);
 });
