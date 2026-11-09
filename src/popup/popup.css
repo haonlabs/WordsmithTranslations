@@ -11,7 +11,7 @@ h1 { margin: 0; font-size: 16px; line-height: 22px; font-weight: 600; letter-spa
 p { margin: 0; }
 .muted { color: var(--ink-500); font-size: 11px; line-height: 16px; }
 .faint { color: var(--ink-300); font-size: 11px; line-height: 16px; }
-.row { display: flex; align-items: center; justify-content: space-between; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 
 /* toggle */
 .toggle { position: relative; font-weight: 500; cursor: pointer; padding: 2px 0; }
@@ -40,14 +40,19 @@ p { margin: 0; }
 .bar { height: 6px; margin-top: 6px; border-radius: 3px; background: var(--ink-200); overflow: hidden; }
 .bar div { height: 100%; background: var(--busy); transition: width 0.2s; }
 
+/* languages */
+.langs { display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; border-radius: 8px; background: var(--ink-50); }
+.langs span { font-weight: 500; }
+.chip { flex: none; padding: 2px 8px; border-radius: 10px; font-size: 11px; line-height: 16px; font-weight: 500; color: var(--ink-500); background: var(--ink-100); }
+.chip.ready { color: var(--ready); background: var(--ready-bg); }
+.chip.busy { color: var(--busy); background: var(--busy-bg); }
+.chip.error { color: var(--error); background: var(--error-bg); }
+
 /* buttons */
 button { font: 600 13px/19px Inter, system-ui, sans-serif; padding: 6px 14px; border-radius: 8px; border: 1px solid var(--ink-200); background: #fff; color: var(--ink-700); cursor: pointer; }
-button.primary { width: 100%; height: 36px; border: 0; background: var(--blue-600); color: #fff; }
+button.primary, button.secondary { width: 100%; height: 36px; }
+button.primary { border: 0; background: var(--blue-600); color: #fff; }
 button.primary:hover:not(:disabled) { background: #1d6bd6; }
 button.primary:disabled { opacity: 0.6; cursor: default; }
 
-/* works-on row */
-.works { padding: 8px 12px; border-radius: 8px; background: var(--ink-50); }
-.chips { display: flex; gap: 6px; }
-.chips b { padding: 2px 8px; border: 1px solid var(--ink-200); border-radius: 10px; background: #fff; color: var(--ink-700); font-size: 11px; font-weight: 500; line-height: 16px; }
 footer { min-height: 20px; }
