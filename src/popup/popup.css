@@ -1,10 +1,58 @@
-body { margin: 0; width: 300px; font: 13px/1.4 system-ui, sans-serif; color: #1a1a1a; }
-main { padding: 14px; }
-h1 { margin: 0; font-size: 15px; }
-.sub { margin: 2px 0 12px; color: #666; }
-.row { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
-.status { margin: 10px 0; padding: 8px; border-radius: 6px; background: #f1f1f1; }
-.status small { display: block; margin-top: 4px; color: #666; word-break: break-word; }
-.status.available { background: #e3f6e8; }
-.status.error, .status.unavailable, .status.unsupported { background: #fde8e8; }
-button { padding: 4px 10px; cursor: pointer; }
+:root {
+  --blue-600: #2b7de9; --blue-400: #5ab0ff; --blue-100: #e3f0fe;
+  --ink-900: #12151a; --ink-700: #2b313b; --ink-500: #5d6675; --ink-300: #a9b0bc; --ink-200: #dde1e8; --ink-100: #eef0f4; --ink-50: #f7f8fa;
+  --ready: #1fa971; --ready-bg: #e3f6ee; --busy: #c98308; --busy-bg: #fdf3df; --error: #d64545; --error-bg: #fce9e9;
+}
+body { margin: 0; width: 320px; font: 13px/19px Inter, system-ui, sans-serif; color: var(--ink-900); background: #fff; }
+main { display: flex; flex-direction: column; gap: 12px; padding: 14px 12px 12px; }
+header { display: flex; align-items: center; gap: 10px; }
+header img { border-radius: 8px; }
+h1 { margin: 0; font-size: 16px; line-height: 22px; font-weight: 600; letter-spacing: -0.1px; }
+p { margin: 0; }
+.muted { color: var(--ink-500); font-size: 11px; line-height: 16px; }
+.faint { color: var(--ink-300); font-size: 11px; line-height: 16px; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+
+/* toggle */
+.toggle { position: relative; font-weight: 500; cursor: pointer; padding: 2px 0; }
+.toggle input { position: absolute; opacity: 0; right: 0; width: 36px; height: 20px; margin: 0; cursor: pointer; }
+.track { width: 36px; height: 20px; border-radius: 10px; background: var(--ink-300); position: relative; transition: background 0.15s; }
+.track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: left 0.15s; }
+.toggle input:checked + .track { background: var(--blue-600); }
+.toggle input:checked + .track::after { left: 18px; }
+.toggle input:focus-visible + .track { outline: 2px solid var(--blue-400); outline-offset: 2px; }
+
+/* status card */
+.card { display: flex; gap: 10px; padding: 12px; border-radius: 10px; background: var(--ink-100); }
+.card > div { flex: 1; min-width: 0; }
+.card strong { display: block; font-weight: 600; }
+.card p { margin-top: 2px; color: var(--ink-700); font-size: 11px; line-height: 16px; }
+.card.setup { background: var(--blue-100); }
+.card.downloading { background: var(--busy-bg); }
+.card.ready { background: var(--ready-bg); }
+.card.unavailable, .card.error { background: var(--error-bg); }
+.icon { flex: none; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; gap: 3px; color: #fff; font-weight: 600; background: var(--ink-500); }
+.icon.setup { background: var(--blue-600); }
+.icon.downloading { background: var(--busy); }
+.icon.ready { background: var(--ready); }
+.icon.unavailable, .icon.error { background: var(--error); }
+.icon i { width: 3px; height: 10px; border-radius: 1px; background: #fff; }
+.bar { height: 6px; margin-top: 6px; border-radius: 3px; background: var(--ink-200); overflow: hidden; }
+.bar div { height: 100%; background: var(--busy); transition: width 0.2s; }
+
+/* languages */
+.langs { display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; border-radius: 8px; background: var(--ink-50); }
+.langs span { font-weight: 500; }
+.chip { flex: none; padding: 2px 8px; border-radius: 10px; font-size: 11px; line-height: 16px; font-weight: 500; color: var(--ink-500); background: var(--ink-100); }
+.chip.ready { color: var(--ready); background: var(--ready-bg); }
+.chip.busy { color: var(--busy); background: var(--busy-bg); }
+.chip.error { color: var(--error); background: var(--error-bg); }
+
+/* buttons */
+button { font: 600 13px/19px Inter, system-ui, sans-serif; padding: 6px 14px; border-radius: 8px; border: 1px solid var(--ink-200); background: #fff; color: var(--ink-700); cursor: pointer; }
+button.primary, button.secondary { width: 100%; height: 36px; }
+button.primary { border: 0; background: var(--blue-600); color: #fff; }
+button.primary:hover:not(:disabled) { background: #1d6bd6; }
+button.primary:disabled { opacity: 0.6; cursor: default; }
+
+footer { min-height: 20px; }

@@ -4,12 +4,12 @@
 
 **Product name:** WordsmithTranslations  
 **Type:** Chrome Extension (Manifest V3)  
-**Primary use case:** Membaca live chat Korea dengan terjemahan Inggris yang muncul inline di bawah pesan asli.
+**Primary use case:** Membaca live chat Korea dan Jepang dengan terjemahan Inggris yang muncul inline di bawah pesan asli.
 
 ## 2. Goals
 
 1. Mendeteksi pesan chat baru yang muncul secara dinamis.
-2. Menerjemahkan pesan Korea ke Inggris secara otomatis.
+2. Menerjemahkan pesan Korea dan Jepang ke Inggris secara otomatis.
 3. Menampilkan hasil terjemahan tepat di bawah pesan sumber.
 4. Mempertahankan tampilan dan interaksi pesan asli.
 5. Berjalan tanpa backend dan tanpa API key eksternal.
@@ -29,11 +29,11 @@
 
 ## 4. Language behavior
 
-- Source language: Korean (`ko`).
-- Target language: English (`en`).
-- Tidak menjalankan general-purpose language detection.
-- Proses pesan jika mengandung setidaknya satu karakter Hangul yang relevan.
-- Pesan campuran Korea/Inggris tetap diterjemahkan.
+- Source languages: Korean (`ko`) dan Japanese (`ja`). Target tetap English (`en`).
+- Tidak menjalankan general-purpose language detection. Deteksi per pesan hanya lewat script: Hangul → `ko`, kana (hiragana/katakana) → `ja`; script yang lebih banyak menang pada pesan campuran.
+- Proses pesan jika mengandung setidaknya satu karakter Hangul atau kana yang relevan.
+- Pesan campuran Korea/Inggris dan Jepang/Inggris tetap diterjemahkan.
+- Pesan Jepang yang hanya berisi kanji (mis. "草") dilewati karena tidak bisa dibedakan dari Mandarin.
 - Pesan yang hanya berisi Inggris, angka, URL, atau emoji dilewati.
 - Jangan mengubah atau menghapus pesan asli.
 - Jika Translator API/model tidak tersedia, tampilkan status yang jelas pada extension UI; jangan diam-diam fallback ke layanan eksternal.
@@ -67,10 +67,10 @@ MVP minimum:
 - FR-01: Extension hanya aktif pada host YouTube dan CHZZK yang ditetapkan.
 - FR-02: Platform adapter mengidentifikasi elemen pesan chat.
 - FR-03: MutationObserver mendeteksi pesan baru dan perubahan subtree yang relevan.
-- FR-04: Pesan Korea baru masuk ke translation queue.
+- FR-04: Pesan Korea atau Jepang baru masuk ke translation queue.
 - FR-05: Queue mencegah request bersamaan berlebihan dan menjaga UI tetap responsif.
 - FR-06: Pesan identik tidak diterjemahkan berulang kali selama cache masih berlaku.
-- FR-07: Translation API dipanggil dengan `sourceLanguage: "ko"` dan `targetLanguage: "en"`.
+- FR-07: Translation API dipanggil dengan `sourceLanguage` hasil deteksi script (`"ko"` atau `"ja"`) dan `targetLanguage: "en"`.
 - FR-08: Hasil ditampilkan sebagai elemen extension-owned di bawah pesan asli.
 - FR-09: Elemen terjemahan tidak boleh diproses kembali oleh observer.
 - FR-10: Kegagalan terjemahan tidak menghapus atau merusak pesan asli.
@@ -95,6 +95,7 @@ MVP minimum:
 - Menerjemahkan audio, subtitle, judul, deskripsi, atau video.
 - Terjemahan dua arah.
 - Terjemahan ke Indonesia.
+- Bahasa sumber lain selain Korean dan Japanese.
 - Akun pengguna, backend, database, analytics, telemetry.
 - Dukungan semua situs streaming.
 - Jaminan kualitas setara Google Cloud Translation.
@@ -104,10 +105,10 @@ MVP minimum:
 MVP dianggap selesai jika:
 1. Extension dapat di-load melalui Chrome `chrome://extensions` sebagai unpacked extension.
 2. Popup menampilkan status dukungan Translator API.
-3. Pada halaman YouTube Live Chat yang didukung, pesan Hangul baru mendapatkan terjemahan Inggris di bawah pesan asli.
+3. Pada halaman YouTube Live Chat yang didukung, pesan Hangul atau kana baru mendapatkan terjemahan Inggris di bawah pesan asli.
 4. Pada halaman CHZZK yang didukung, perilaku yang sama berjalan.
-5. Pesan non-Korea tidak diterjemahkan.
-6. Pesan campuran Korea/Inggris diproses.
+5. Pesan yang bukan Korea/Jepang tidak diterjemahkan; termasuk pesan Jepang yang hanya berisi kanji (mis. "草").
+6. Pesan campuran Korea/Inggris dan Jepang/Inggris diproses.
 7. Pesan yang sama tidak menghasilkan beberapa terjemahan.
 8. Terjemahan tidak memicu loop MutationObserver.
 9. Chat tetap bisa discroll dan digunakan.

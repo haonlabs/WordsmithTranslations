@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { Lang } from "../shared/translator";
 import { TranslationQueue } from "./queue";
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -14,11 +15,21 @@ describe("TranslationQueue", () => {
   it("translates once for duplicate in-flight input, then serves from cache", async () => {
     const translate = vi.fn(async (t: string) => `EN:${t}`);
     const q = new TranslationQueue({ translate });
-    const [a, b] = await Promise.all([q.enqueue("안녕"), q.enqueue("안녕")]);
+    const [a, b] = await Promise.all([q.enqueue("안녕", "안녕", "ko"), q.enqueue("안녕", "안녕", "ko")]);
     expect(a).toBe("EN:안녕");
     expect(b).toBe("EN:안녕");
-    await q.enqueue("안녕");
+    await q.enqueue("안녕", "안녕", "ko");
     expect(translate).toHaveBeenCalledTimes(1);
+  });
+
+  it("translates the same text again for a different language and forwards lang", async () => {
+    const translate = vi.fn(async (t: string, lang: Lang) => `EN:${lang}:${t}`);
+    const q = new TranslationQueue({ translate });
+    await expect(q.enqueue("안녕", "안녕", "ko")).resolves.toBe("EN:ko:안녕");
+    await expect(q.enqueue("안녕", "안녕", "ja")).resolves.toBe("EN:ja:안녕");
+    expect(translate).toHaveBeenCalledTimes(2);
+    expect(translate).toHaveBeenNthCalledWith(1, "안녕", "ko");
+    expect(translate).toHaveBeenNthCalledWith(2, "안녕", "ja");
   });
 
   it("never exceeds the concurrency limit and keeps FIFO order", async () => {
@@ -37,7 +48,7 @@ describe("TranslationQueue", () => {
         return d.promise.finally(() => active--);
       },
     });
-    const ps = ["가", "나", "다", "라"].map((t) => q.enqueue(t));
+    const ps = ["가", "나", "다", "라"].map((t) => q.enqueue(t, t, "ko"));
     expect(started).toEqual(["가", "나"]);
     gates.get("가")!.resolve("1");
     await flush();
@@ -53,10 +64,10 @@ describe("TranslationQueue", () => {
   it("drops the oldest pending jobs when the queue cap is exceeded", async () => {
     const gate = deferred();
     const q = new TranslationQueue({ concurrency: 1, maxQueue: 2, translate: () => gate.promise });
-    const first = q.enqueue("running"); // starts immediately
-    const old = q.enqueue("old");
-    const mid = q.enqueue("mid");
-    const newest = q.enqueue("newest"); // pending is now [old, mid, newest] -> drops old
+    const first = q.enqueue("running", "running", "ko"); // starts immediately
+    const old = q.enqueue("old", "old", "ko");
+    const mid = q.enqueue("mid", "mid", "ko");
+    const newest = q.enqueue("newest", "newest", "ko"); // pending is now [old, mid, newest] -> drops old
     await expect(old).rejects.toThrow("dropped");
     gate.resolve("ok");
     await expect(Promise.all([first, mid, newest])).resolves.toEqual(["ok", "ok", "ok"]);
@@ -65,32 +76,32 @@ describe("TranslationQueue", () => {
   it("retries transient errors a bounded number of times", async () => {
     const translate = vi.fn().mockRejectedValue(new Error("flaky"));
     const q = new TranslationQueue({ translate, maxRetries: 2 });
-    await expect(q.enqueue("실패")).rejects.toThrow("flaky");
+    await expect(q.enqueue("실패", "실패", "ko")).rejects.toThrow("flaky");
     expect(translate).toHaveBeenCalledTimes(3); // 1 try + 2 retries
   });
 
   it("recovers when a retry succeeds and does not cache failures", async () => {
     const translate = vi.fn().mockRejectedValueOnce(new Error("flaky")).mockResolvedValue("ok");
     const q = new TranslationQueue({ translate });
-    await expect(q.enqueue("재시도")).resolves.toBe("ok");
+    await expect(q.enqueue("재시도", "재시도", "ko")).resolves.toBe("ok");
   });
 
   it("does not retry permanent errors", async () => {
     const err = Object.assign(new Error("no gesture"), { name: "NotAllowedError" });
     const translate = vi.fn().mockRejectedValue(err);
     const q = new TranslationQueue({ translate });
-    await expect(q.enqueue("영구")).rejects.toThrow("no gesture");
+    await expect(q.enqueue("영구", "영구", "ko")).rejects.toThrow("no gesture");
     expect(translate).toHaveBeenCalledTimes(1);
     // failure was not cached: next call translates again
-    await expect(q.enqueue("영구")).rejects.toThrow();
+    await expect(q.enqueue("영구", "영구", "ko")).rejects.toThrow();
     expect(translate).toHaveBeenCalledTimes(2);
   });
 
   it("clear() rejects pending jobs", async () => {
     const gate = deferred();
     const q = new TranslationQueue({ concurrency: 1, translate: () => gate.promise });
-    const running = q.enqueue("a");
-    const waiting = q.enqueue("b");
+    const running = q.enqueue("a", "a", "ko");
+    const waiting = q.enqueue("b", "b", "ko");
     q.clear();
     await expect(waiting).rejects.toThrow("cleared");
     gate.resolve("ok");
